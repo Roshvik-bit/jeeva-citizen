@@ -45,7 +45,7 @@ export const MyReportsDrawer = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
+    <div className="fixed inset-0 z-[9999] flex justify-end bg-slate-900/40 backdrop-blur-sm animate-fadeIn">
       <div className="w-full max-w-md bg-white border-l border-slate-200 h-full flex flex-col shadow-2xl">
         {/* Drawer Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50">

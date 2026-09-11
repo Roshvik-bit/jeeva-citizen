@@ -190,7 +190,7 @@ export const LocationPicker = ({ location, setLocation }) => {
 
       {/* Embedded OpenStreetMap Pin-Drop View */}
       {showMap && (
-        <div className="relative w-full h-[180px] rounded-lg overflow-hidden border border-slate-300 shadow-xs">
+        <div className="relative z-0 isolate w-full h-[180px] rounded-lg overflow-hidden border border-slate-300 shadow-xs">
           <div ref={mapContainerRef} className="w-full h-full" />
           <div className="absolute top-2 left-2 z-[20] bg-white/95 border border-slate-200 rounded-md px-2 py-0.5 text-[11px] font-medium text-slate-700 flex items-center gap-1 shadow-xs">
             <span>Tap or drag pin to adjust location</span>

@@ -6,7 +6,7 @@ export const ToastContainer = () => {
   const { toasts, removeToast } = useCitizenEmergency();
 
   return (
-    <div className="fixed top-20 right-4 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-2 sm:px-0">
+    <div className="fixed top-20 right-4 z-[10000] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none px-2 sm:px-0">
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
       ))}

@@ -66,3 +66,8 @@
 .animate-count-pop {
   animation: countPop 0.2s ease-out forwards;
 }
+
+/* Stacking context isolation for Leaflet map */
+.leaflet-container {
+  z-index: 0 !important;
+}
