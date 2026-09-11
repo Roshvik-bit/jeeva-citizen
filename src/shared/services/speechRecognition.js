@@ -809,14 +809,19 @@ export const speechService = {
     targetLanguage = "en"
   }) => {
     const langName = speechService.getLanguageName(language);
+    let finalEnglishTranscript = "";
+    let capturedOriginal = existingTranscript || null;
+    let transcriptionSource = "disaster-engine";
 
-    // 1. Multimodal Gemini Flash Audio Transcription directly into English
+    // 1. Multimodal Gemini Flash Audio Transcription directly into English from ANY language
     const apiKey = (typeof import.meta !== "undefined" ? import.meta.env?.VITE_GEMINI_API_KEY : null) ||
-      (typeof window !== "undefined" ? (window.localStorage?.getItem("VITE_GEMINI_API_KEY") || window.localStorage?.getItem("GEMINI_API_KEY")) : null);
+      (typeof window !== "undefined" ? (window.localStorage?.getItem("VITE_GEMINI_API_KEY") || window.localStorage?.getItem("GEMINI_API_KEY")) : null) ||
+      (typeof process !== "undefined" ? process.env?.VITE_GEMINI_API_KEY : null);
+
     if (apiKey && audioBlob && audioBlob.size > 0) {
       try {
         const base64Audio = await speechService.convertBlobToBase64(audioBlob);
-        const prompt = `Listen to this emergency voice recording spoken in ${langName}. Transcribe and translate it directly into clear, natural English for emergency rescue dispatchers. Return ONLY the English transcription text. Do not add quotes, explanations, or commentary.`;
+        const prompt = `Listen to this emergency voice recording spoken in ANY language (such as Hindi, Tamil, Telugu, Kannada, Bengali, Malayalam, Marathi, Gujarati, etc.). Transcribe and translate it directly into clear, natural English for emergency rescue dispatchers. Return ONLY the English translation text. Do not add quotes, introductory tags, or explanations.`;
 
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
@@ -843,15 +848,14 @@ export const speechService = {
 
         if (res.ok) {
           const json = await res.json();
-          const transcribed = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          let transcribed = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
           if (transcribed) {
-            return {
-              transcript: transcribed.replace(/^["']|["']$/g, ""),
-              originalTranscript: (existingTranscript && language !== "en") ? existingTranscript : null,
-              source: "gemini-ai",
-              language: "en",
-              spokenLanguage: language
-            };
+            transcribed = transcribed.replace(/^["']|["']$/g, "")
+                                     .replace(/\*\*English Translation:\*\*\s*/i, "")
+                                     .replace(/\*\*Detected Language:[^\n]*\n+/i, "")
+                                     .trim();
+            finalEnglishTranscript = transcribed;
+            transcriptionSource = "gemini-ai";
           }
         }
       } catch (err) {
@@ -859,30 +863,45 @@ export const speechService = {
       }
     }
 
-    // 2. If live dictation captured real speech text during recording, translate it into English!
+    // 2. If live dictation captured real speech text during recording, translate it into English from ANY language!
     const cleanExisting = (existingTranscript || "").trim();
-    if (cleanExisting && cleanExisting.length > 5) {
-      let englishTranscript = cleanExisting;
-      if (language !== "en") {
-        englishTranscript = await speechService.translateToEnglish(cleanExisting, language, category);
+    if (!finalEnglishTranscript && cleanExisting && cleanExisting.length > 2) {
+      const isIndian = speechService.hasIndianScript(cleanExisting);
+      if (language !== "en" || isIndian) {
+        finalEnglishTranscript = await speechService.translateToEnglish(cleanExisting, language, category);
+      } else {
+        finalEnglishTranscript = cleanExisting;
       }
-      return {
-        transcript: englishTranscript,
-        originalTranscript: (language !== "en") ? cleanExisting : null,
-        source: "live-speech",
-        language: "en",
-        spokenLanguage: language
-      };
+      transcriptionSource = "live-speech";
+      capturedOriginal = cleanExisting;
     }
 
     // 3. Fallback to Multilingual Category Disaster Engine with guaranteed English transcription
-    const distressPair = speechService.getScriptWithEnglishTranslation(language, category);
+    if (!finalEnglishTranscript) {
+      const distressPair = speechService.getScriptWithEnglishTranslation(language, category);
+      finalEnglishTranscript = distressPair.english;
+      capturedOriginal = language !== "en" ? distressPair.original : null;
+      transcriptionSource = "disaster-engine";
+    }
+
+    // 4. GENERATE ENGLISH AUDIO (Change audio to English from any language!)
+    let englishAudio = null;
+    try {
+      englishAudio = await speechService.generateEnglishAudioFromText(finalEnglishTranscript);
+    } catch (audioGenErr) {
+      console.warn("English audio generation notice:", audioGenErr);
+    }
+
     return {
-      transcript: distressPair.english,
-      originalTranscript: (language !== "en") ? distressPair.original : null,
-      source: "disaster-engine",
+      transcript: finalEnglishTranscript,
+      originalTranscript: capturedOriginal,
+      source: transcriptionSource,
       language: "en",
-      spokenLanguage: language
+      spokenLanguage: language,
+      englishAudioBlob: englishAudio?.blob || null,
+      englishAudioUrl: englishAudio?.url || null,
+      englishAudioBase64: englishAudio?.base64 || null,
+      hasEnglishAudio: Boolean(englishAudio?.url)
     };
   },
 
@@ -986,6 +1005,138 @@ export const speechService = {
         sizeBytes: 0,
         mimeType: "audio/webm"
       };
+    }
+  },
+
+  /**
+   * Generates real English speech audio (WAV Blob & URL) from English text using Gemini TTS
+   */
+  generateEnglishAudioFromText: async (englishText) => {
+    if (!englishText || typeof englishText !== "string" || !englishText.trim()) return null;
+    const cleanText = englishText.trim();
+
+    const apiKey = (typeof import.meta !== "undefined" ? import.meta.env?.VITE_GEMINI_API_KEY : null) ||
+      (typeof window !== "undefined" ? (window.localStorage?.getItem("VITE_GEMINI_API_KEY") || window.localStorage?.getItem("GEMINI_API_KEY")) : null) ||
+      (typeof process !== "undefined" ? process.env?.VITE_GEMINI_API_KEY : null);
+
+    if (apiKey) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: cleanText }] }],
+              generationConfig: {
+                responseModalities: ["AUDIO"]
+              }
+            })
+          }
+        );
+
+        if (res.ok) {
+          const data = await res.json();
+          const inlineData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+          if (inlineData?.data) {
+            // Convert base64 PCM into Uint8Array
+            const binaryString = (typeof atob === "function") 
+              ? atob(inlineData.data) 
+              : (typeof Buffer !== "undefined" ? Buffer.from(inlineData.data, "base64").toString("binary") : "");
+            const len = binaryString.length;
+            const pcmBytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+              pcmBytes[i] = binaryString.charCodeAt(i);
+            }
+
+            // Create WAV Blob (PCM 24000Hz mono 16-bit)
+            const sampleRate = 24000;
+            const numChannels = 1;
+            const bitsPerSample = 16;
+            const dataSize = pcmBytes.length;
+            const buffer = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buffer);
+
+            const writeString = (v, off, str) => {
+              for (let j = 0; j < str.length; j++) {
+                v.setUint8(off + j, str.charCodeAt(j));
+              }
+            };
+
+            writeString(view, 0, "RIFF");
+            view.setUint32(4, 36 + dataSize, true);
+            writeString(view, 8, "WAVE");
+            writeString(view, 12, "fmt ");
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // Linear PCM
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * numChannels * (bitsPerSample / 8), true);
+            view.setUint16(32, numChannels * (bitsPerSample / 8), true);
+            view.setUint16(34, bitsPerSample, true);
+            writeString(view, 36, "data");
+            view.setUint32(40, dataSize, true);
+
+            new Uint8Array(buffer, 44).set(pcmBytes);
+
+            const wavBlob = new Blob([buffer], { type: "audio/wav" });
+            const wavUrl = (typeof URL !== "undefined" && typeof URL.createObjectURL === "function")
+              ? URL.createObjectURL(wavBlob)
+              : null;
+            const wavBase64 = await speechService.convertBlobToBase64(wavBlob);
+
+            return {
+              blob: wavBlob,
+              url: wavUrl,
+              base64: wavBase64,
+              duration: Math.round(dataSize / (sampleRate * 2)),
+              sizeBytes: wavBlob.size,
+              mimeType: "audio/wav"
+            };
+          }
+        }
+      } catch (err) {
+        console.warn("Gemini TTS English audio generation notice:", err);
+      }
+    }
+
+    return null;
+  },
+
+  /**
+   * Speak English text directly using browser SpeechSynthesis
+   */
+  speakEnglishText: (text, onStart, onEnd) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return false;
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "en-US";
+      utterance.rate = 0.95;
+      utterance.pitch = 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      const enVoice = voices.find((v) => (v.lang === "en-US" || v.lang === "en-GB" || v.lang.startsWith("en")) && !v.name.includes("compact"));
+      if (enVoice) utterance.voice = enVoice;
+
+      if (onStart) utterance.onstart = onStart;
+      if (onEnd) utterance.onend = onEnd;
+      utterance.onerror = () => { if (onEnd) onEnd(); };
+
+      window.speechSynthesis.speak(utterance);
+      return true;
+    } catch (e) {
+      console.warn("speechSynthesis error:", e);
+      return false;
+    }
+  },
+
+  /**
+   * Stop active speech synthesis
+   */
+  stopEnglishSpeech: () => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
     }
   }
 };

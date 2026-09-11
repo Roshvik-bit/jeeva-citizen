@@ -4,7 +4,8 @@ import {
   geminiChatService,
   EMERGENCY_CATEGORIES,
   geoService,
-  LANG_LOCALE_MAP
+  LANG_LOCALE_MAP,
+  speechService
 } from "@jeeva/shared";
 import {
   Sparkles,
@@ -31,7 +32,9 @@ import {
   Info,
   PhoneCall,
   Loader2,
-  Languages
+  Languages,
+  Volume2,
+  VolumeX
 } from "lucide-react";
 
 export const AIChatbox = ({ onOpenMyReports }) => {
@@ -46,6 +49,7 @@ export const AIChatbox = ({ onOpenMyReports }) => {
   const [isListeningVoice, setIsListeningVoice] = useState(false);
   const [currentCoords, setCurrentCoords] = useState(null);
   const [submittedIncident, setSubmittedIncident] = useState(null);
+  const [speakingMsgId, setSpeakingMsgId] = useState(null);
 
   // Active Draft Emergency Report extracted by Gemini
   const [draftReport, setDraftReport] = useState(null);
@@ -57,7 +61,7 @@ export const AIChatbox = ({ onOpenMyReports }) => {
       sender: "assistant",
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       content:
-        "👋 **Hello! I am JEEVA's Gemini AI Emergency Assistant.**\n\nIf filling out the emergency form feels confusing or difficult, don't worry. Simply describe what is happening, where you are, or how many people need help. I will automatically prepare and submit your rescue report.",
+        "👋 **Hello! I am JEEVA's Gemini AI Emergency Assistant.**\n\nIf filling out the emergency form feels confusing or difficult, don't worry. Simply describe what is happening, where you are, or how many people need help in any language. I will automatically prepare and submit your rescue report.",
       suggestions: [
         "🌊 Flood water entering house",
         "👥 Family trapped on roof",
@@ -81,6 +85,30 @@ export const AIChatbox = ({ onOpenMyReports }) => {
       setHasUnreadNotice(false);
     }
   }, [messages, isTyping, isOpen, scrollToBottom]);
+
+  // Clean up speech on unmount
+  useEffect(() => {
+    return () => {
+      speechService.stopEnglishSpeech();
+    };
+  }, []);
+
+  // Speak assistant response aloud in English
+  const handleSpeakMsg = (msgId, text) => {
+    if (speakingMsgId === msgId) {
+      speechService.stopEnglishSpeech();
+      setSpeakingMsgId(null);
+    } else {
+      speechService.stopEnglishSpeech();
+      setSpeakingMsgId(msgId);
+      const cleanText = (text || "").replace(/[*_#`]/g, "").trim();
+      speechService.speakEnglishText(
+        cleanText,
+        () => setSpeakingMsgId(msgId),
+        () => setSpeakingMsgId(null)
+      );
+    }
+  };
 
   // Fetch initial GPS coordinates in background
   useEffect(() => {
@@ -116,7 +144,7 @@ export const AIChatbox = ({ onOpenMyReports }) => {
     }
   };
 
-  // Trigger browser speech recognition for mic input
+  // Trigger browser speech recognition for mic input (translates to English from any language)
   const handleToggleVoice = () => {
     if (isListeningVoice) {
       if (speechRecognizerRef.current) {
@@ -148,10 +176,24 @@ export const AIChatbox = ({ onOpenMyReports }) => {
         setIsListeningVoice(true);
       };
 
-      recognizer.onresult = (event) => {
+      recognizer.onresult = async (event) => {
         let transcript = "";
+        let isFinal = false;
         for (let i = event.resultIndex; i < event.results.length; i++) {
           transcript += event.results[i][0].transcript;
+          if (event.results[i].isFinal) isFinal = true;
+        }
+
+        const trimmed = transcript.trim();
+        // If spoken in an Indian language or requested non-English, convert directly to English!
+        if (isFinal && trimmed && (language !== "en" || speechService.hasIndianScript(trimmed))) {
+          try {
+            const enText = await speechService.translateToEnglish(trimmed, language);
+            if (enText) {
+              setInputMessage(enText);
+              return;
+            }
+          } catch (_) {}
         }
         setInputMessage(transcript);
       };
@@ -458,11 +500,35 @@ export const AIChatbox = ({ onOpenMyReports }) => {
                   </div>
 
                   <div
-                    className={`mt-1 text-[10px] text-right ${
-                      msg.sender === "user" ? "text-blue-200" : "text-slate-400"
-                    }`}
+                    className={`mt-1.5 flex items-center justify-between gap-2 border-t ${
+                      msg.sender === "user" ? "border-blue-500/50" : "border-slate-100"
+                    } pt-1 text-[10px]`}
                   >
-                    {msg.timestamp}
+                    {msg.sender === "assistant" && (
+                      <button
+                        type="button"
+                        onClick={() => handleSpeakMsg(msg.id, msg.content)}
+                        className={`flex items-center gap-1 text-[10px] font-semibold transition-colors cursor-pointer ${
+                          speakingMsgId === msg.id ? "text-amber-600 animate-pulse font-bold" : "text-slate-500 hover:text-blue-600"
+                        }`}
+                        title="Listen to response spoken aloud in English"
+                      >
+                        {speakingMsgId === msg.id ? (
+                          <>
+                            <VolumeX className="w-3 h-3 text-amber-600" />
+                            <span>Stop Voice</span>
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 className="w-3 h-3 text-blue-600" />
+                            <span>🔊 Listen (English)</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                    <span className={`text-[10px] ${msg.sender === "user" ? "text-blue-200" : "text-slate-400"} ml-auto`}>
+                      {msg.timestamp}
+                    </span>
                   </div>
                 </div>
 
