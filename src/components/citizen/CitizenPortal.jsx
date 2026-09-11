@@ -10,27 +10,51 @@ import {
   BookOpen,
   PhoneCall,
   Radio,
-  Clock
+  Clock,
+  AlertOctagon,
+  ArrowRight
 } from "lucide-react";
 
-export const CitizenPortal = ({ isDrawerOpen: externalDrawerOpen, setIsDrawerOpen: externalSetDrawerOpen }) => {
+export const CitizenPortal = ({
+  isDrawerOpen: externalDrawerOpen,
+  setIsDrawerOpen: externalSetDrawerOpen,
+  activeTab: externalActiveTab,
+  setActiveTab: externalSetActiveTab
+}) => {
   const { myReports, t } = useCitizenEmergency();
-  const [activeTab, setActiveTab] = useState("form"); // default to "form" as requested
+  // Landing page opens with the SOS button by default; Report an Emergency is second
+  const [internalActiveTab, setInternalActiveTab] = useState("sos");
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [internalDrawerOpen, setInternalDrawerOpen] = useState(false);
   const isDrawerOpen = externalDrawerOpen !== undefined ? externalDrawerOpen : internalDrawerOpen;
   const setIsDrawerOpen = externalSetDrawerOpen || setInternalDrawerOpen;
+  const activeTab = externalActiveTab !== undefined ? externalActiveTab : internalActiveTab;
+  const setActiveTab = externalSetActiveTab || setInternalActiveTab;
 
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6 pb-24 space-y-4">
       {/* Offline Alert & Pending Sync Banner */}
       <OfflineSyncBanner />
 
-      {/* Mode Switcher Tabs */}
-      <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+      {/* Mode Switcher Tabs: 1st Option = SOS Button, 2nd Option = Report an Emergency */}
+      <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+        {/* 1st Option: SOS Button */}
+        <button
+          onClick={() => setActiveTab("sos")}
+          className={`flex-1 py-2.5 px-3 rounded-lg text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+            activeTab === "sos"
+              ? "bg-red-600 text-white shadow-sm"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          <AlertOctagon className="w-4 h-4 stroke-[2.5]" />
+          <span>{t.quickSosBeacon || "Quick SOS Beacon"}</span>
+        </button>
+
+        {/* 2nd Option: Report an Emergency */}
         <button
           onClick={() => setActiveTab("form")}
-          className={`flex-1 py-2 px-3 rounded-md text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-2.5 px-3 rounded-lg text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 ${
             activeTab === "form"
               ? "bg-white text-blue-700 shadow-xs border border-slate-200"
               : "text-slate-600 hover:text-slate-900"
@@ -39,36 +63,11 @@ export const CitizenPortal = ({ isDrawerOpen: externalDrawerOpen, setIsDrawerOpe
           <FileText className="w-4 h-4" />
           <span>{t.reportAnEmergency || "Report an Emergency"}</span>
         </button>
-
-        <button
-          onClick={() => setActiveTab("sos")}
-          className={`flex-1 py-2 px-3 rounded-md text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${
-            activeTab === "sos"
-              ? "bg-red-600 text-white shadow-xs"
-              : "text-slate-600 hover:text-slate-900"
-          }`}
-        >
-          <span className="w-2 h-2 rounded-full bg-red-400" />
-          <span>{t.quickSosBeacon || "Quick SOS Beacon"}</span>
-        </button>
       </div>
 
       {/* Main Tab Content Card */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm">
-        {activeTab === "form" ? (
-          <div className="space-y-4">
-            <div className="border-b border-slate-100 pb-3">
-              <h2 className="text-lg font-bold text-slate-900">
-                {t.reportAnEmergency || "Report an Emergency"}
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {t.reportAnEmergencyDesc || "Fill in the details below to dispatch immediate rescue assistance to your location."}
-              </p>
-            </div>
-
-            <EmergencyReportForm onViewReportStatus={() => setIsDrawerOpen(true)} />
-          </div>
-        ) : (
+        {activeTab === "sos" ? (
           <div className="space-y-6 py-2">
             <div className="text-center space-y-1">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-700 border border-red-200">
@@ -83,6 +82,18 @@ export const CitizenPortal = ({ isDrawerOpen: externalDrawerOpen, setIsDrawerOpe
             </div>
 
             <QuickSOSButton />
+
+            {/* Quick Switch to Detailed Emergency Reporting */}
+            <div className="text-center pt-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab("form")}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
+              >
+                <span>{t.reportAnEmergency || "Report an Emergency with Details & Photo"}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
             {/* Quick Helpline Numbers */}
             <div className="pt-4 border-t border-slate-100 flex items-center justify-around text-center text-xs">
@@ -102,6 +113,30 @@ export const CitizenPortal = ({ isDrawerOpen: externalDrawerOpen, setIsDrawerOpe
                 <span>108 (Ambulance)</span>
               </a>
             </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="border-b border-slate-100 pb-3 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  {t.reportAnEmergency || "Report an Emergency"}
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {t.reportAnEmergencyDesc || "Fill in the details below to dispatch immediate rescue assistance to your location."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab("sos")}
+                className="shrink-0 px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                title="Switch to One-Touch SOS Beacon"
+              >
+                <AlertOctagon className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>{t.sosButton || "SOS"}</span>
+              </button>
+            </div>
+
+            <EmergencyReportForm onViewReportStatus={() => setIsDrawerOpen(true)} />
           </div>
         )}
       </div>

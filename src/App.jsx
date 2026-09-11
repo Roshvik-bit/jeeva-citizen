@@ -8,6 +8,8 @@ import { ShieldAlert, Radio, FileText, BookOpen, AlertOctagon } from "lucide-rea
 const CitizenAppContent = () => {
   const { t } = useCitizenEmergency();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  // Default to SOS landing page as requested
+  const [activeTab, setActiveTab] = useState("sos");
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F9FC] text-[#1F2937] selection:bg-blue-600 selection:text-white">
@@ -22,24 +24,45 @@ const CitizenAppContent = () => {
         <CitizenPortal
           isDrawerOpen={isDrawerOpen}
           setIsDrawerOpen={setIsDrawerOpen}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
         />
       </main>
 
       {/* Mobile Fixed Bottom Quick Action Bar */}
-      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 px-4 py-2 flex items-center justify-around shadow-md">
+      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 px-3 py-2 flex items-center justify-around shadow-md">
+        {/* 1st Option: SOS Button */}
         <button
           onClick={() => {
+            setActiveTab("sos");
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}
-          className="flex flex-col items-center gap-1 text-[11px] font-bold text-blue-700"
+          className={`flex flex-col items-center gap-1 text-[11px] font-bold transition-colors ${
+            activeTab === "sos" ? "text-red-600" : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <AlertOctagon className="w-5 h-5 stroke-[2.5]" />
+          <span>{t.sosButton || "SOS"}</span>
+        </button>
+
+        {/* 2nd Option: Report an Emergency */}
+        <button
+          onClick={() => {
+            setActiveTab("form");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          className={`flex flex-col items-center gap-1 text-[11px] font-bold transition-colors ${
+            activeTab === "form" ? "text-blue-700" : "text-slate-500 hover:text-slate-800"
+          }`}
         >
           <Radio className="w-5 h-5" />
           <span>{t.reportAnEmergency || "Report"}</span>
         </button>
 
+        {/* 3rd Option: My Reports */}
         <button
           onClick={() => setIsDrawerOpen(true)}
-          className="flex flex-col items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800"
+          className="flex flex-col items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 transition-colors"
         >
           <FileText className="w-5 h-5" />
           <span>{t.myReports || "My Reports"}</span>
