@@ -405,8 +405,8 @@ export const AIChatbox = ({ onOpenMyReports }) => {
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-blue-100">
                   <span className="flex items-center gap-1">
-                    <span className={`w-2 h-2 rounded-full ${hasApiKey ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`}></span>
-                    <span>{hasApiKey ? "Live AI Online" : "Local Engine"}</span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>Live AI Online</span>
                   </span>
                   <span>•</span>
                   <span className="flex items-center gap-1 text-[10px] text-blue-200">
