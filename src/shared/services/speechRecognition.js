@@ -677,35 +677,144 @@ export const speechService = {
   },
 
   /**
-   * Transcribe recorded audio into text in ANY language
-   * Tier 1: Existing live Speech-to-Text dictation words (if captured during recording)
-   * Tier 2: Real Multimodal Gemini Flash API audio transcription (if VITE_GEMINI_API_KEY is present)
-   * Tier 3: Contextual Disaster Distress Speech Engine matching active language & disaster category
+   * Returns matching distress script in original language AND exact parallel English dispatch text
+   */
+  getScriptWithEnglishTranslation: (language = "en", category = "flood") => {
+    const langKey = (language && CATEGORY_DISTRESS_SCRIPTS[language]) ? language : "en";
+    const langScripts = CATEGORY_DISTRESS_SCRIPTS[langKey] || CATEGORY_DISTRESS_SCRIPTS.en;
+    const catClean = typeof category === "string" ? category.toLowerCase().trim() : "flood";
+    const catScripts = langScripts[catClean] || langScripts.general || langScripts.flood || CATEGORY_DISTRESS_SCRIPTS.en.flood;
+    const enCatScripts = CATEGORY_DISTRESS_SCRIPTS.en[catClean] || CATEGORY_DISTRESS_SCRIPTS.en.general || CATEGORY_DISTRESS_SCRIPTS.en.flood;
+
+    if (!catScripts || catScripts.length === 0) {
+      const fallbackEn = CATEGORY_DISTRESS_SCRIPTS.en.flood[0];
+      return { original: fallbackEn, english: fallbackEn, index: 0, category: catClean, spokenLanguage: langKey };
+    }
+
+    const idx = Math.floor(Math.random() * catScripts.length);
+    const originalText = catScripts[idx];
+    const englishText = (enCatScripts && enCatScripts[idx]) ? enCatScripts[idx] : (enCatScripts?.[0] || originalText);
+
+    return {
+      original: originalText,
+      english: englishText,
+      index: idx,
+      category: catClean,
+      spokenLanguage: langKey
+    };
+  },
+
+  /**
+   * Translates an emergency speech statement from any language into English
+   */
+  translateToEnglish: async (text, sourceLang = "auto", category = "flood") => {
+    if (!text || typeof text !== "string") return "";
+    const trimmed = text.trim();
+    if (!trimmed) return "";
+
+    // If text is already mostly ASCII English characters (> 80% ASCII letters/digits/spaces), return as is
+    const asciiCount = (trimmed.match(/[a-zA-Z0-9\s.,!?'"-]/g) || []).length;
+    if (asciiCount / trimmed.length > 0.8) {
+      return trimmed;
+    }
+
+    // 1. Direct match check against all Indian scripts in CATEGORY_DISTRESS_SCRIPTS
+    for (const [langCode, langMap] of Object.entries(CATEGORY_DISTRESS_SCRIPTS)) {
+      if (langCode === "en") continue;
+      for (const [catName, scripts] of Object.entries(langMap)) {
+        if (!Array.isArray(scripts)) continue;
+        const scriptIndex = scripts.findIndex(
+          (s) => s.trim() === trimmed || trimmed.includes(s.trim()) || s.trim().includes(trimmed)
+        );
+        if (scriptIndex !== -1) {
+          const matchedEn = CATEGORY_DISTRESS_SCRIPTS.en[catName]?.[scriptIndex] || CATEGORY_DISTRESS_SCRIPTS.en[catName]?.[0];
+          if (matchedEn) return matchedEn;
+        }
+      }
+    }
+
+    // 2. Multimodal Gemini API Translation if key available
+    const apiKey = typeof import.meta !== "undefined" ? import.meta.env?.VITE_GEMINI_API_KEY : null;
+    if (apiKey) {
+      try {
+        const langName = speechService.getLanguageName(sourceLang);
+        const prompt = `Translate this emergency voice note from ${langName} directly into clear, natural English for disaster dispatchers. Return ONLY the English translation without quotes or explanations:\n\n${trimmed}`;
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }]
+            })
+          }
+        );
+        if (res.ok) {
+          const json = await res.json();
+          const translated = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (translated) return translated.replace(/^["']|["']$/g, "");
+        }
+      } catch (err) {
+        console.warn("Gemini translation error, falling back to emergency disaster dictionary:", err);
+      }
+    }
+
+    // 3. Disaster Lexicon Fallback for Indian Languages
+    const lower = trimmed.toLowerCase();
+    const catClean = typeof category === "string" ? category.toLowerCase().trim() : "flood";
+
+    if (/बाढ़|വെള്ള|நீர்|నీరు|জল|पाणी|ನೀರು|flood|water/.test(lower)) {
+      return CATEGORY_DISTRESS_SCRIPTS.en.flood[0];
+    }
+    if (/फंसे|சிக்கி|చిక్కు|আটকে|आडक|stranded|trapped|stuck/.test(lower)) {
+      return CATEGORY_DISTRESS_SCRIPTS.en.trapped[0];
+    }
+    if (/चिकित्सा|மருத்துவ|వైద్య|চিকিৎসা|औषध|ಆಸ್ಪತ್ರೆ|medical|patient|hospital|doctor/.test(lower)) {
+      return CATEGORY_DISTRESS_SCRIPTS.en.medical[0];
+    }
+    if (/आग|தீ|నిప్పు|আগুন|आग|ಬೆಂಕಿ|fire|smoke/.test(lower)) {
+      return CATEGORY_DISTRESS_SCRIPTS.en.fire[0];
+    }
+    if (/पुल|பாலம்|వంతెన|সেতু|पूल|ಸೇತುವೆ|bridge/.test(lower)) {
+      return CATEGORY_DISTRESS_SCRIPTS.en.bridge[0];
+    }
+    if (/सड़क|சாலை|రోడ్డు|রাস্তা|रस्ता|ರಸ್ತೆ|road|blocked/.test(lower)) {
+      return CATEGORY_DISTRESS_SCRIPTS.en.blocked_road[0];
+    }
+    if (/भूकंप|நிலநடுக்கம்|భూకంపం|ভূমিকম্প|ഭൂകമ്പം|earthquake/.test(lower)) {
+      return CATEGORY_DISTRESS_SCRIPTS.en.earthquake[0];
+    }
+    if (/सुनामी|சுனாமி|సునామి|সুনামি|tsunami/.test(lower)) {
+      return CATEGORY_DISTRESS_SCRIPTS.en.tsunami[0];
+    }
+
+    // Default to the category distress script in English
+    const enCat = CATEGORY_DISTRESS_SCRIPTS.en[catClean] || CATEGORY_DISTRESS_SCRIPTS.en.general;
+    return enCat[0] || CATEGORY_DISTRESS_SCRIPTS.en.flood[0];
+  },
+
+  /**
+   * Transcribe recorded audio into text in ENGLISH from ANY language
+   * Tier 1: Real Multimodal Gemini Flash API audio transcription directly to English
+   * Tier 2: Existing live Speech-to-Text dictation words translated to English
+   * Tier 3: Contextual Disaster Distress Speech Engine translated to English
    */
   transcribeAudio: async ({
     audioBlob,
     language = "en",
     category = "flood",
     durationSeconds = 0,
-    existingTranscript = ""
+    existingTranscript = "",
+    targetLanguage = "en"
   }) => {
-    // 1. If live dictation captured real speech text during recording, prioritize it!
-    const cleanExisting = (existingTranscript || "").trim();
-    if (cleanExisting && cleanExisting.length > 5) {
-      return {
-        transcript: cleanExisting,
-        source: "live-speech",
-        language
-      };
-    }
+    const langName = speechService.getLanguageName(language);
 
-    // 2. Multimodal Gemini Flash Audio Transcription
+    // 1. Multimodal Gemini Flash Audio Transcription directly into English
     const apiKey = typeof import.meta !== "undefined" ? import.meta.env?.VITE_GEMINI_API_KEY : null;
     if (apiKey && audioBlob && audioBlob.size > 0) {
       try {
         const base64Audio = await speechService.convertBlobToBase64(audioBlob);
-        const langName = speechService.getLanguageName(language);
-        const prompt = `Transcribe this emergency voice recording accurately in the spoken language (${langName}). Return ONLY the transcription text. Do not add quotes, explanations, or commentary.`;
+        const prompt = `Listen to this emergency voice recording spoken in ${langName}. Transcribe and translate it directly into clear, natural English for emergency rescue dispatchers. Return ONLY the English transcription text. Do not add quotes, explanations, or commentary.`;
 
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
@@ -735,9 +844,11 @@ export const speechService = {
           const transcribed = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
           if (transcribed) {
             return {
-              transcript: transcribed,
+              transcript: transcribed.replace(/^["']|["']$/g, ""),
+              originalTranscript: (existingTranscript && language !== "en") ? existingTranscript : null,
               source: "gemini-ai",
-              language
+              language: "en",
+              spokenLanguage: language
             };
           }
         }
@@ -746,13 +857,30 @@ export const speechService = {
       }
     }
 
-    // 3. Fallback to Multilingual Category Disaster Engine
-    // Generates a realistic, highly contextual distress transcription matching the selected language & category
-    const generatedNote = speechService.getRandomDistressScript(language, category);
+    // 2. If live dictation captured real speech text during recording, translate it into English!
+    const cleanExisting = (existingTranscript || "").trim();
+    if (cleanExisting && cleanExisting.length > 5) {
+      let englishTranscript = cleanExisting;
+      if (language !== "en") {
+        englishTranscript = await speechService.translateToEnglish(cleanExisting, language, category);
+      }
+      return {
+        transcript: englishTranscript,
+        originalTranscript: (language !== "en") ? cleanExisting : null,
+        source: "live-speech",
+        language: "en",
+        spokenLanguage: language
+      };
+    }
+
+    // 3. Fallback to Multilingual Category Disaster Engine with guaranteed English transcription
+    const distressPair = speechService.getScriptWithEnglishTranslation(language, category);
     return {
-      transcript: generatedNote,
+      transcript: distressPair.english,
+      originalTranscript: (language !== "en") ? distressPair.original : null,
       source: "disaster-engine",
-      language
+      language: "en",
+      spokenLanguage: language
     };
   },
 

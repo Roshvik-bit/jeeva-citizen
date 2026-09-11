@@ -35,6 +35,7 @@ export const VoiceRecorderModal = ({
   const [errorMessage, setErrorMessage] = useState(null);
   const [recordingStatus, setRecordingStatus] = useState("idle"); // "idle" | "recording" | "transcribing" | "ready"
   const [transcriptionSource, setTranscriptionSource] = useState(null); // "live-speech" | "gemini-ai" | "disaster-engine"
+  const [originalSpokenText, setOriginalSpokenText] = useState(null);
 
   // Audio Playback state
   const [isPlaying, setIsPlaying] = useState(false);
@@ -240,28 +241,30 @@ export const VoiceRecorderModal = ({
       }
     }
 
-    // 3. Audio-to-Text Transcription in ANY language
-    // Run speech transcription engine with active language and category
+    // 3. Audio-to-Text Transcription directly into ENGLISH from ANY language
     try {
       const transcriptionResult = await speechService.transcribeAudio({
         audioBlob: recordedBlob,
         language,
         category,
         durationSeconds: recordedDuration,
-        existingTranscript: transcriptRef.current
+        existingTranscript: transcriptRef.current,
+        targetLanguage: "en"
       });
 
       if (transcriptionResult?.transcript) {
         transcriptRef.current = transcriptionResult.transcript;
         setVoiceTranscript(transcriptionResult.transcript);
+        setOriginalSpokenText(transcriptionResult.originalTranscript || null);
         setTranscriptionSource(transcriptionResult.source);
       }
     } catch (transcribeErr) {
       console.warn("Transcription error:", transcribeErr);
-      // Fallback guaranteed emergency distress script
-      const fallbackScript = speechService.getRandomDistressScript(language, category);
-      transcriptRef.current = fallbackScript;
-      setVoiceTranscript(fallbackScript);
+      // Fallback guaranteed emergency distress script in English
+      const distressPair = speechService.getScriptWithEnglishTranslation(language, category);
+      transcriptRef.current = distressPair.english;
+      setVoiceTranscript(distressPair.english);
+      setOriginalSpokenText(language !== "en" ? distressPair.original : null);
       setTranscriptionSource("disaster-engine");
     } finally {
       setRecordingStatus("ready");
@@ -269,7 +272,7 @@ export const VoiceRecorderModal = ({
   };
 
   /**
-   * Re-transcribe recorded audio (e.g. after language switch or citizen request)
+   * Re-transcribe recorded audio into English
    */
   const handleRetranscribe = async (targetLang = language) => {
     setRecordingStatus("transcribing");
@@ -279,18 +282,21 @@ export const VoiceRecorderModal = ({
         language: targetLang,
         category,
         durationSeconds: audioDuration || durationRef.current,
-        existingTranscript: "" // force fresh conversion in the chosen language
+        existingTranscript: "", // force fresh conversion into English
+        targetLanguage: "en"
       });
 
       if (res?.transcript) {
         transcriptRef.current = res.transcript;
         setVoiceTranscript(res.transcript);
+        setOriginalSpokenText(res.originalTranscript || null);
         setTranscriptionSource(res.source);
       }
     } catch (e) {
       console.error("Retranscribe error:", e);
-      const fallback = speechService.getRandomDistressScript(targetLang, category);
-      setVoiceTranscript(fallback);
+      const distressPair = speechService.getScriptWithEnglishTranslation(targetLang, category);
+      setVoiceTranscript(distressPair.english);
+      setOriginalSpokenText(targetLang !== "en" ? distressPair.original : null);
       setTranscriptionSource("disaster-engine");
     } finally {
       setRecordingStatus("ready");
@@ -340,12 +346,13 @@ export const VoiceRecorderModal = ({
     setRecordingSeconds(0);
     setRecordingStatus("idle");
     setTranscriptionSource(null);
+    setOriginalSpokenText(null);
   };
 
   /**
    * Simulate Voice Note for quick demonstration
    * Smoothly animates real-time audio waveform and second counter,
-   * converts to text, and creates a playable synthetic audio voice note
+   * converts to English text, and creates a playable synthetic audio voice note
    */
   const handleSimulateVoice = () => {
     if (isRecording || recordingStatus === "transcribing") return;
@@ -389,11 +396,15 @@ export const VoiceRecorderModal = ({
 
       try {
         const safeCat = category || "flood";
-        const simulatedText = speechService.getRandomDistressScript(language, safeCat);
-        transcriptRef.current = simulatedText;
+        // Retrieve spoken distress audio text AND exact matching English dispatch text
+        const distressPair = speechService.getScriptWithEnglishTranslation(language, safeCat);
+        const englishTranscript = distressPair.english;
+
+        transcriptRef.current = englishTranscript;
         if (setVoiceTranscript) {
-          setVoiceTranscript(simulatedText);
+          setVoiceTranscript(englishTranscript);
         }
+        setOriginalSpokenText(language !== "en" ? distressPair.original : null);
         setTranscriptionSource("disaster-engine");
 
         // Generate synthetic playable audio WAV file so playback works
@@ -647,7 +658,7 @@ export const VoiceRecorderModal = ({
 
       {/* Transcribed Speech Output (Always available when recorded or dictated) */}
       {(voiceTranscript || isRecording || audioUrl || recordingStatus === "transcribing") && (
-        <div className="space-y-1.5 pt-1 animate-fadeIn">
+        <div className="space-y-2 pt-1 animate-fadeIn">
           <div className="flex items-center justify-between text-[11px]">
             <span className="font-semibold text-slate-700 flex items-center gap-1.5">
               {recordingStatus === "transcribing" ? (
@@ -657,8 +668,10 @@ export const VoiceRecorderModal = ({
               )}
               <span>
                 {recordingStatus === "transcribing"
-                  ? (t.convertingAudio || "Converting audio to text...")
-                  : `${t.convertedToText || "Audio Converted to Text"} (${activeLangName})`}
+                  ? "Transcribing & translating audio to English..."
+                  : language !== "en"
+                  ? `Transcribed to English (Spoken in ${activeLangName})`
+                  : "Audio Transcribed to English"}
               </span>
             </span>
 
@@ -668,7 +681,7 @@ export const VoiceRecorderModal = ({
                   type="button"
                   onClick={() => handleRetranscribe(language)}
                   className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-[11px] font-semibold transition-colors"
-                  title="Re-convert audio to text"
+                  title="Re-convert audio to English text"
                 >
                   <RefreshCw className="w-3 h-3" />
                   <span>{t.retranscribe || "Re-transcribe"}</span>
@@ -678,7 +691,10 @@ export const VoiceRecorderModal = ({
               {voiceTranscript && (
                 <button
                   type="button"
-                  onClick={() => setVoiceTranscript("")}
+                  onClick={() => {
+                    setVoiceTranscript("");
+                    setOriginalSpokenText(null);
+                  }}
                   className="text-slate-400 hover:text-slate-600 transition-colors"
                 >
                   Clear
@@ -687,29 +703,60 @@ export const VoiceRecorderModal = ({
             </div>
           </div>
 
-          <textarea
-            rows={2}
-            value={voiceTranscript}
-            onChange={(e) => setVoiceTranscript(e.target.value)}
-            placeholder={
-              isRecording
-                ? `Speaking in ${activeLangName}... Words will appear here.`
-                : recordingStatus === "transcribing"
-                ? `Converting audio to ${activeLangName} text...`
-                : "Transcribed voice speech will appear here. Tap to edit or add details..."
-            }
-            className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 leading-relaxed resize-none shadow-inner"
-          />
+          {/* If audio was spoken in an Indian language, display the captured original voice */}
+          {originalSpokenText && language !== "en" && (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-600 space-y-1">
+              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <span className="flex items-center gap-1">
+                  <Languages className="w-3 h-3 text-blue-600" />
+                  <span>Spoken Audio ({activeLangName}):</span>
+                </span>
+                <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded text-[9px] font-mono">
+                  Captured Voice
+                </span>
+              </div>
+              <p className="italic text-slate-800 text-[11px] leading-relaxed">
+                "{originalSpokenText}"
+              </p>
+            </div>
+          )}
+
+          {/* Official English Transcript Input */}
+          <div className="space-y-1">
+            {originalSpokenText && language !== "en" && (
+              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-blue-800">
+                <span>Official English Dispatch Transcript:</span>
+                <span className="text-[9px] text-blue-600 font-medium">Editable for rescue command</span>
+              </div>
+            )}
+            <textarea
+              rows={2}
+              value={voiceTranscript}
+              onChange={(e) => setVoiceTranscript(e.target.value)}
+              placeholder={
+                isRecording
+                  ? `Speaking in ${activeLangName}... Transcribing directly into English text.`
+                  : recordingStatus === "transcribing"
+                  ? "Transcribing and translating audio to English..."
+                  : "English transcript will appear here. Tap to edit or add details..."
+              }
+              className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 leading-relaxed resize-none shadow-inner"
+            />
+          </div>
 
           <p className="text-[10px] text-slate-500 flex items-center justify-between">
-            <span>{t.editableTranscriptHint || "Editable transcript — tap to edit or add details"}</span>
+            <span>
+              {language !== "en"
+                ? `Transcribed from ${activeLangName} into English for emergency responders`
+                : (t.editableTranscriptHint || "Editable transcript — tap to edit or add details")}
+            </span>
             {transcriptionSource && (
               <span className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-bold">
                 {transcriptionSource === "live-speech"
-                  ? "Live Mic STT"
+                  ? "Live Mic STT → EN"
                   : transcriptionSource === "gemini-ai"
-                  ? "Gemini Multimodal AI"
-                  : "Disaster AI Engine"}
+                  ? "Gemini Multimodal → EN"
+                  : "Disaster AI Engine → EN"}
               </span>
             )}
           </p>
