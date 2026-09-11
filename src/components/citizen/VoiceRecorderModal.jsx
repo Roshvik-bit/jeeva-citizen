@@ -24,7 +24,8 @@ export const VoiceRecorderModal = ({
   audioBase64,
   setAudioBase64,
   audioBlob,
-  setAudioBlob
+  setAudioBlob,
+  category = "flood"
 }) => {
   const { t, language, setLanguage } = useCitizenEmergency();
 
@@ -47,6 +48,8 @@ export const VoiceRecorderModal = ({
   const transcriptRef = useRef(voiceTranscript || "");
   const durationRef = useRef(0);
   const recordedBlobRef = useRef(null);
+  const simulationTimerRef = useRef(null);
+  const simulationAnimRef = useRef(null);
 
   // Keep transcriptRef in sync with external voiceTranscript
   useEffect(() => {
@@ -56,6 +59,8 @@ export const VoiceRecorderModal = ({
   // Clean up on unmount
   useEffect(() => {
     return () => {
+      if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
+      if (simulationAnimRef.current) clearInterval(simulationAnimRef.current);
       if (recorderSessionRef.current) {
         speechService.stopMediaRecording(recorderSessionRef.current);
       }
@@ -186,6 +191,9 @@ export const VoiceRecorderModal = ({
    * Stop Recording, finalize Audio Blob and transcribe audio into text in ANY language
    */
   const stopVoiceRecording = async () => {
+    if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
+    if (simulationAnimRef.current) clearInterval(simulationAnimRef.current);
+
     setIsRecording(false);
     setRecordingStatus("transcribing");
     setWaveformLevels([10, 10, 10, 10, 10, 10, 10, 10, 10, 10]);
@@ -311,6 +319,9 @@ export const VoiceRecorderModal = ({
    * Discard Recorded Audio & Reset
    */
   const handleDiscardAudio = () => {
+    if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
+    if (simulationAnimRef.current) clearInterval(simulationAnimRef.current);
+
     if (audioElementRef.current) {
       audioElementRef.current.pause();
     }
@@ -333,24 +344,79 @@ export const VoiceRecorderModal = ({
 
   /**
    * Simulate Voice Note for quick demonstration
+   * Smoothly animates real-time audio waveform and second counter,
+   * converts to text, and creates a playable synthetic audio voice note
    */
   const handleSimulateVoice = () => {
+    if (isRecording || recordingStatus === "transcribing") return;
+
+    if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
+    if (simulationAnimRef.current) clearInterval(simulationAnimRef.current);
+
+    if (audioElementRef.current) {
+      audioElementRef.current.pause();
+    }
+    setIsPlaying(false);
+    setPlaybackProgress(0);
+    setErrorMessage(null);
+
     setIsRecording(true);
     setRecordingStatus("recording");
-    setRecordingSeconds(1);
+    setRecordingSeconds(0);
+    setTranscriptionSource(null);
 
-    setTimeout(() => {
+    let sec = 0;
+    simulationTimerRef.current = setInterval(() => {
+      sec += 1;
+      setRecordingSeconds(sec);
+      if (sec >= 3) {
+        if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
+      }
+    }, 1000);
+
+    simulationAnimRef.current = setInterval(() => {
+      const levels = Array.from({ length: 10 }, () => Math.floor(14 + Math.random() * 32));
+      setWaveformLevels(levels);
+    }, 90);
+
+    setTimeout(async () => {
+      if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
+      if (simulationAnimRef.current) clearInterval(simulationAnimRef.current);
+
+      setIsRecording(false);
       setRecordingStatus("transcribing");
-      setTimeout(() => {
-        const simulatedText = speechService.getRandomDistressScript(language, category);
+      setWaveformLevels([10, 10, 10, 10, 10, 10, 10, 10, 10, 10]);
+
+      try {
+        const safeCat = category || "flood";
+        const simulatedText = speechService.getRandomDistressScript(language, safeCat);
         transcriptRef.current = simulatedText;
-        setVoiceTranscript(simulatedText);
+        if (setVoiceTranscript) {
+          setVoiceTranscript(simulatedText);
+        }
         setTranscriptionSource("disaster-engine");
-        setIsRecording(false);
+
+        // Generate synthetic playable audio WAV file so playback works
+        const audioResult = await speechService.createSimulatedAudioBlob(3);
+        if (audioResult?.blob) {
+          recordedBlobRef.current = audioResult.blob;
+          if (setAudioBlob) setAudioBlob(audioResult.blob);
+        }
+        if (audioResult?.url) {
+          if (setAudioUrl) setAudioUrl(audioResult.url);
+          setAudioDuration(3);
+          setAudioSizeBytes(audioResult.sizeBytes || 0);
+        }
+        if (audioResult?.base64 && setAudioBase64) {
+          setAudioBase64(audioResult.base64);
+        }
+      } catch (simErr) {
+        console.warn("Voice simulation error:", simErr);
+      } finally {
         setRecordingStatus("ready");
         setRecordingSeconds(0);
-      }, 500);
-    }, 800);
+      }
+    }, 2200);
   };
 
   const activeLangName = speechService.getLanguageName(language);

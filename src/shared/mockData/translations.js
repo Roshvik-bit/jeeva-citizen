@@ -51,6 +51,11 @@ export const translations = {
     cyclone: "Cyclone",
     landslide: "Landslide",
     collapse: "Structural Collapse",
+    earthquake: "Earthquake",
+    tsunami: "Tsunami",
+    other: "Other",
+    otherCategoryLabel: "Specify Incident / Disaster Type",
+    otherPlaceholder: "E.g., Gas leak, Chemical spill, Avalanche, Industrial hazard...",
     
     // Form Fields
     titleLabel: "Incident Title / Headline",
@@ -212,6 +217,11 @@ export const translations = {
     cyclone: "चक्रवात / तूफान",
     landslide: "भूस्खलन",
     collapse: "भवन ढहना",
+    earthquake: "भूकंप (Earthquake)",
+    tsunami: "सुनामी (Tsunami)",
+    other: "अन्य (Other)",
+    otherCategoryLabel: "आपदा का प्रकार निर्दिष्ट करें",
+    otherPlaceholder: "उदा., गैस रिसाव, रासायनिक रिसाव, हिमस्खलन...",
     
     // Form Fields
     titleLabel: "घटना का शीर्षक / मुख्य विवरण",
@@ -370,6 +380,11 @@ export const translations = {
     cyclone: "ঘূর্ণিঝড়",
     landslide: "ভূমিধস",
     collapse: "ভবন ধস",
+    earthquake: "ভূমিকম্প (Earthquake)",
+    tsunami: "সুনামি (Tsunami)",
+    other: "অন্যান্য (Other)",
+    otherCategoryLabel: "দুর্যোগের ধরন উল্লেখ করুন",
+    otherPlaceholder: "যেমন, গ্যাস লিক, রাসায়নিক দুর্ঘটনা, তুষারধস...",
     
     // Form Fields
     titleLabel: "ঘটনার শিরোনাম / জরুরি হেডলাইন",
@@ -522,6 +537,11 @@ export const translations = {
     cyclone: "புயல் / சூறாவளி",
     landslide: "நிலச்சரிவு",
     collapse: "கட்டிட இடிபாடு",
+    earthquake: "நிலநடுக்கம் (Earthquake)",
+    tsunami: "சுனாமி (Tsunami)",
+    other: "பிற (Other)",
+    otherCategoryLabel: "அவசரநிலையைக் குறிப்பிடவும்",
+    otherPlaceholder: "எ.கா., எரிவாயு கசிவு, வேதியியல் கசிவு, பனிச்சரிவு...",
     
     // Form Fields
     titleLabel: "விபத்தின் தலைப்பு / அவசர தலைப்பு",
@@ -674,6 +694,11 @@ export const translations = {
     cyclone: "తుఫాను",
     landslide: "కొండచరియలు విరిగిపడటం",
     collapse: "భవనం కూలడం",
+    earthquake: "భూకంపం (Earthquake)",
+    tsunami: "సునామి (Tsunami)",
+    other: "ఇతర (Other)",
+    otherCategoryLabel: "విపత్తు రకాన్ని పేర్కొనండి",
+    otherPlaceholder: "ఉదా., గ్యాస్ లీక్, రసాయన ప్రమాదం, హిమపాతం...",
     
     // Form Fields
     titleLabel: "సంఘటన శీర్షిక / అత్యవసర హెడ్‌లైన్",
@@ -826,6 +851,11 @@ export const translations = {
     cyclone: "ചുഴലിക്കാറ്റ്",
     landslide: "ഉരുൾപൊട്ടൽ",
     collapse: "കെട്ടിട തകർച്ച",
+    earthquake: "ഭൂകമ്പം (Earthquake)",
+    tsunami: "സുനാമി (Tsunami)",
+    other: "മറ്റുള്ളവ (Other)",
+    otherCategoryLabel: "ദുരന്ത തരം വ്യക്തമാക്കുക",
+    otherPlaceholder: "ഉദാ., ഗ്യാസ് ചോർച്ച, രാസ അപകടം, ഹിമപാതം...",
     
     // Form Fields
     titleLabel: "സംഭവത്തിന്റെ തലക്കെട്ട് / അടിയന്തര തലക്കെട്ട്",
@@ -978,6 +1008,11 @@ export const translations = {
     cyclone: "चक्रीवादळ",
     landslide: "दरड कोसळणे",
     collapse: "इमारत कोसळणे",
+    earthquake: "भूकंप (Earthquake)",
+    tsunami: "सुनामी (Tsunami)",
+    other: "इतर (Other)",
+    otherCategoryLabel: "आपत्तीचा प्रकार निर्दिष्ट करा",
+    otherPlaceholder: "उदा., गॅस गळती, रासायनिक गळती, हिमस्खलन...",
     
     // Form Fields
     titleLabel: "घटनेचे शीर्षक / आणीबाणी हेडलाईन",
@@ -1133,6 +1168,11 @@ export const translations = {
     cyclone: "ಚಂಡಮಾರುತ",
     landslide: "ಭೂಕುಸಿತ",
     collapse: "ಕಟ್ಟಡ ಕುಸಿತ",
+    earthquake: "ಭೂಕಂಪ (Earthquake)",
+    tsunami: "ಸುನಾಮಿ (Tsunami)",
+    other: "ಇತರೆ (Other)",
+    otherCategoryLabel: "ತುರ್ತು ಪರಿಸ್ಥಿತಿಯ ಪ್ರಕಾರವನ್ನು ನಮೂದಿಸಿ",
+    otherPlaceholder: "ಉದಾ., ಗ್ಯಾಸ್ ಸೋರಿಕೆ, ರಾಸಾಯನಿಕ ಸೋರಿಕೆ, ಹಿಮಕುಸಿತ...",
     
     // Form Fields
     titleLabel: "ಘಟನೆಯ ಶೀರ್ಷಿಕೆ / ತುರ್ತು ಹೆಡ್‌ಲೈನ್",

@@ -508,7 +508,13 @@ export const CitizenProvider = ({ children }) => {
 
       const assignedStatus = scored.status || (scored.isFalseAlarm ? "REJECTED" : "Pending");
 
-      if (scored.isInvalidImage || aiResult?.isInvalidImage) {
+      if (scored.isDigitalFake || aiResult?.isDigitalFake) {
+        addToast({
+          type: "warning",
+          title: "⚠️ Digital Spoof Detected",
+          message: "Image identified as a downloaded web photo, AI generation, or screen capture. Priority Score is strictly 0.0."
+        });
+      } else if (scored.isInvalidImage || aiResult?.isInvalidImage) {
         addToast({
           type: "warning",
           title: "Image Verification Alert",
@@ -541,6 +547,7 @@ export const CitizenProvider = ({ children }) => {
         assignedUnit: null,
         priorityScore: scored.priorityScore,
         isFalseAlarm: scored.isFalseAlarm,
+        isDigitalFake: Boolean(scored.isDigitalFake || aiResult?.isDigitalFake),
         isRequiresReview: scored.isRequiresReview,
         isInvalidImage: Boolean(scored.isInvalidImage || aiResult?.isInvalidImage),
         isRealReport: scored.isRealReport,
@@ -564,6 +571,7 @@ export const CitizenProvider = ({ children }) => {
         priorityScore: scored.priorityScore,
         severity: scored.severity,
         isFalseAlarm: scored.isFalseAlarm,
+        isDigitalFake: Boolean(scored.isDigitalFake || aiResult?.isDigitalFake),
         peopleCount: isSosReport || rawReport.peopleCount == null ? null : (rawReport.peopleCount || 1),
         photoUrl: isSosReport ? null : (publicPhotoUrl || rawReport.photoUrl || null),
         audioUrl: publicAudioUrl || activePlayableAudio,
@@ -577,8 +585,10 @@ export const CitizenProvider = ({ children }) => {
         playEmergencyAudio("beep");
         addToast({
           type: "warning",
-          title: "⚠️ Report Flagged as False Alarm (Score 0.0)",
-          message: "Report identified as a non-emergency or false alarm. Priority Score set strictly to 0.0/10."
+          title: scored.isDigitalFake ? "⚠️ Digital Spoof Flagged (Score 0.0)" : "⚠️ Report Flagged as False Alarm (Score 0.0)",
+          message: scored.isDigitalFake
+            ? "Image identified as a digital spoof (web download, AI image, or screen capture). Priority Score set strictly to 0.0/10."
+            : "Report identified as a non-emergency or false alarm. Priority Score set strictly to 0.0/10."
         });
       } else {
         playEmergencyAudio("siren");
@@ -594,6 +604,10 @@ export const CitizenProvider = ({ children }) => {
         isOffline: false,
         incidentId: incidentId,
         isFalseAlarm: scored.isFalseAlarm,
+        isDigitalFake: Boolean(scored.isDigitalFake || aiResult?.isDigitalFake),
+        isRequiresReview: scored.isRequiresReview,
+        isInvalidImage: Boolean(scored.isInvalidImage || aiResult?.isInvalidImage),
+        status: assignedStatus,
         priorityScore: scored.priorityScore,
         severity: scored.severity,
         verificationReason: aiResult?.verificationReason

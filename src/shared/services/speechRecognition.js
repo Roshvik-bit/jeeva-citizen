@@ -69,6 +69,20 @@ export const CATEGORY_DISTRESS_SCRIPTS = {
       "Submerged electrical transformer sparking and caught fire. Risk of high-voltage current in water, disconnect power!",
       "Fire broke out in warehouse near residential sector. Flames visible, immediate firefighting response required!"
     ],
+    earthquake: [
+      "Major earthquake tremors felt here! The apartment wall has developed deep cracks and masonry collapsed. People trapped under debris, send search and rescue teams immediately!",
+      "Strong seismic shocks shook our neighborhood. 3 people trapped in staircase rubble, send clearance unit urgently!",
+      "Ground rupture and building partial collapse. Multiple injured citizens needing evacuation and trauma care!"
+    ],
+    tsunami: [
+      "Massive coastal tsunami wave breached our sea wall! High velocity water rushing into houses, people swept inland. Send rescue boats immediately!",
+      "Tsunami surge has inundated entire coastal village! Evacuation route submerged, families clinging to high ground, dispatch boats urgently!",
+      "Sea water entered our sector at dangerous velocity! 6 people cut off from safety, urgent marine rescue needed!"
+    ],
+    other: [
+      "Urgent emergency situation! Specialized hazard condition reported in our sector. Immediate first responder assistance required!",
+      "Distress condition reported. Residents need urgent intervention and disaster triage response team immediately!"
+    ],
     general: [
       "Emergency situation in our area. Water rising rapidly, multiple families stranded without power or phone connectivity. Send rescue teams!"
     ]
@@ -372,20 +386,39 @@ export const speechService = {
   /**
    * Convert Audio Blob to base64 string for API payloads
    */
-  convertBlobToBase64: (blob) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        try {
-          const base64data = reader.result.split(",")[1];
-          resolve(base64data);
-        } catch (e) {
-          reject(e);
-        }
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+  convertBlobToBase64: async (blob) => {
+    if (!blob) return null;
+
+    if (typeof FileReader !== "undefined") {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          try {
+            const base64data = reader.result.split(",")[1];
+            resolve(base64data);
+          } catch (e) {
+            reject(e);
+          }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    if (typeof blob.arrayBuffer === "function") {
+      const buffer = await blob.arrayBuffer();
+      if (typeof Buffer !== "undefined") {
+        return Buffer.from(buffer).toString("base64");
+      }
+      const bytes = new Uint8Array(buffer);
+      let binary = "";
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
+    }
+
+    return null;
   },
 
   /**
@@ -736,12 +769,93 @@ export const speechService = {
    * Generates a realistic distress dictation for simulation/testing in active language & category
    */
   getRandomDistressScript: (language = "en", category = "flood") => {
-    const langScripts = CATEGORY_DISTRESS_SCRIPTS[language] || CATEGORY_DISTRESS_SCRIPTS.en;
-    const catScripts = langScripts[category] || langScripts.flood || langScripts.general || [];
-    if (catScripts.length === 0) {
+    const langKey = (language && CATEGORY_DISTRESS_SCRIPTS[language]) ? language : "en";
+    const langScripts = CATEGORY_DISTRESS_SCRIPTS[langKey] || CATEGORY_DISTRESS_SCRIPTS.en;
+    const catClean = typeof category === "string" ? category.toLowerCase().trim() : "flood";
+    const catScripts = langScripts[catClean] || langScripts.general || langScripts.flood || CATEGORY_DISTRESS_SCRIPTS.en.flood;
+    if (!catScripts || catScripts.length === 0) {
       return CATEGORY_DISTRESS_SCRIPTS.en.flood[0];
     }
     const idx = Math.floor(Math.random() * catScripts.length);
     return catScripts[idx];
+  },
+
+  /**
+   * Generates a valid, playable synthetic audio WAV Blob for demonstration & offline testing
+   */
+  createSimulatedAudioBlob: async (durationSeconds = 3) => {
+    try {
+      const sampleRate = 16000;
+      const numChannels = 1;
+      const bitsPerSample = 16;
+      const numSamples = Math.floor(sampleRate * durationSeconds);
+      const dataSize = numSamples * numChannels * (bitsPerSample / 8);
+      const buffer = new ArrayBuffer(44 + dataSize);
+      const view = new DataView(buffer);
+
+      const writeString = (v, off, str) => {
+        for (let j = 0; j < str.length; j++) {
+          v.setUint8(off + j, str.charCodeAt(j));
+        }
+      };
+
+      // RIFF header
+      writeString(view, 0, "RIFF");
+      view.setUint32(4, 36 + dataSize, true);
+      writeString(view, 8, "WAVE");
+
+      // fmt sub-chunk
+      writeString(view, 12, "fmt ");
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true); // PCM
+      view.setUint16(22, numChannels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * numChannels * (bitsPerSample / 8), true);
+      view.setUint16(32, numChannels * (bitsPerSample / 8), true);
+      view.setUint16(34, bitsPerSample, true);
+
+      // data sub-chunk
+      writeString(view, 36, "data");
+      view.setUint32(40, dataSize, true);
+
+      // Subtle voice-band distress tone
+      let offset = 44;
+      for (let i = 0; i < numSamples; i++) {
+        const t = i / sampleRate;
+        const voiceFreq = 440 + 50 * Math.sin(2 * Math.PI * 3 * t);
+        const signal = Math.sin(2 * Math.PI * voiceFreq * t) * 0.22 +
+                       Math.sin(2 * Math.PI * 880 * t) * 0.08;
+        const envelope = Math.min(1, Math.min(t * 8, (durationSeconds - t) * 4));
+        const sample = Math.max(-1, Math.min(1, signal * envelope));
+        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+        offset += 2;
+      }
+
+      const blob = new Blob([buffer], { type: "audio/wav" });
+      const url = (typeof URL !== "undefined" && typeof URL.createObjectURL === "function")
+        ? URL.createObjectURL(blob)
+        : null;
+      const base64 = await speechService.convertBlobToBase64(blob);
+
+      return {
+        blob,
+        url,
+        base64,
+        duration: durationSeconds,
+        sizeBytes: blob.size,
+        mimeType: "audio/wav"
+      };
+    } catch (err) {
+      console.warn("createSimulatedAudioBlob error:", err);
+      const emptyBlob = new Blob([], { type: "audio/webm" });
+      return {
+        blob: emptyBlob,
+        url: null,
+        base64: null,
+        duration: durationSeconds,
+        sizeBytes: 0,
+        mimeType: "audio/webm"
+      };
+    }
   }
 };

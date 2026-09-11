@@ -25,7 +25,9 @@ import {
   ShieldCheck,
   AlertOctagon,
   Zap,
-  FileText
+  FileText,
+  Activity,
+  MoreHorizontal
 } from "lucide-react";
 
 export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
@@ -33,6 +35,7 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
 
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("flood");
+  const [customCategory, setCustomCategory] = useState("");
   const [peopleCount, setPeopleCount] = useState(1);
   const [hasMedicalEmergency, setHasMedicalEmergency] = useState(false);
   const [medicalDetails, setMedicalDetails] = useState("");
@@ -54,18 +57,26 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedReceipt, setSubmittedReceipt] = useState(null);
 
-  // Exact categories: Flood, People Trapped, Medical Emergency, Blocked Road, Damaged Bridge, Fire
+  // 9 categories in 3 rows x 3 columns:
+  // Row 1: Flood, People Trapped, Medical Emergency
+  // Row 2: Blocked Road, Damaged Bridge, Fire
+  // Row 3: Earthquake (Col 1), Tsunami (Col 2), Other (Col 3)
   const categories = [
     { id: "flood", label: t.flood || "Flood", icon: <Waves className="w-4 h-4 text-blue-600" /> },
     { id: "trapped", label: t.trapped || "People Trapped", icon: <Users className="w-4 h-4 text-orange-600" /> },
     { id: "medical", label: t.medical || "Medical Emergency", icon: <HeartPulse className="w-4 h-4 text-red-600" /> },
     { id: "blocked_road", label: t.blockedRoad || "Blocked Road", icon: <AlertTriangle className="w-4 h-4 text-amber-600" /> },
     { id: "bridge", label: t.bridge || "Damaged Bridge", icon: <Building2 className="w-4 h-4 text-slate-600" /> },
-    { id: "fire", label: t.fire || "Fire", icon: <Flame className="w-4 h-4 text-red-500" /> }
+    { id: "fire", label: t.fire || "Fire", icon: <Flame className="w-4 h-4 text-red-500" /> },
+    { id: "earthquake", label: t.earthquake || "Earthquake", icon: <Activity className="w-4 h-4 text-amber-700" /> },
+    { id: "tsunami", label: t.tsunami || "Tsunami", icon: <Waves className="w-4 h-4 text-cyan-600" /> },
+    { id: "other", label: t.other || "Other", icon: <MoreHorizontal className="w-4 h-4 text-purple-600" /> }
   ];
 
   const handleResetForm = () => {
     setTitle("");
+    setCategory("flood");
+    setCustomCategory("");
     setDescription("");
     setVoiceTranscript("");
     setVoiceAudioUrl(null);
@@ -93,7 +104,9 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
         .filter(Boolean)
         .join("\n\n");
 
-      const categoryLabel = categories.find((c) => c.id === category)?.label || category;
+      const categoryItem = categories.find((c) => c.id === category);
+      const isCustomOther = category === "other" && customCategory.trim().length > 0;
+      const categoryLabel = isCustomOther ? customCategory.trim() : (categoryItem?.label || category);
       const defaultAutoTitle = `${categoryLabel} Emergency at ${location.address || "Disaster Zone"}`;
       const finalTitle = title.trim() || defaultAutoTitle;
 
@@ -107,7 +120,8 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
 
       const result = await submitDistressReport({
         title: finalTitle,
-        category,
+        category: isCustomOther ? customCategory.trim() : category,
+        customCategory: isCustomOther ? customCategory.trim() : undefined,
         peopleCount: Number(peopleCount),
         hasMedicalEmergency,
         medicalDetails,
@@ -128,15 +142,22 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
         ? rawId
         : `JEEVA-2026-${rawId.slice(-3)}`;
 
-      const currentCategoryLabel = categories.find((c) => c.id === category)?.label || category;
+      const currentCategoryLabel = categoryLabel;
+
+      const isDigitalFake = Boolean(
+        result?.isDigitalFake ||
+        aiClassification?.isDigitalFake
+      );
 
       const isInvalidImg = Boolean(
+        isDigitalFake ||
         result?.isInvalidImage ||
         aiClassification?.isInvalidImage ||
         (photoUrl && (aiClassification?.isValidDisaster === false || result?.isValidDisaster === false))
       );
 
       const isFalse = Boolean(
+        isDigitalFake ||
         result?.isFalseAlarm ||
         aiClassification?.isFalseAlarm ||
         currentStatementCheck.isFakeStatement ||
@@ -144,16 +165,20 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
       );
 
       const isRequiresReview = Boolean(
-        result?.isRequiresReview ||
-        aiClassification?.status === "REQUIRES_REVIEW" ||
-        (isInvalidImg && currentStatementCheck.isRealEmergency)
+        !isDigitalFake && (
+          result?.isRequiresReview ||
+          aiClassification?.status === "REQUIRES_REVIEW" ||
+          (isInvalidImg && currentStatementCheck.isRealEmergency)
+        )
       );
 
-      const assignedStatus = result?.status || (isRequiresReview ? "REQUIRES_REVIEW" : (isFalse ? "REJECTED" : "Pending"));
-      const calculatedScore = isFalse ? 0.0 : (isRequiresReview ? 1.0 : (result?.priorityScore != null ? result.priorityScore : 7.5));
-      const calculatedSeverity = isFalse ? "False Alarm" : (isRequiresReview ? "Requires Review" : (result?.severity || "High"));
+      const assignedStatus = isDigitalFake ? "REJECTED" : (result?.status || (isRequiresReview ? "REQUIRES_REVIEW" : (isFalse ? "REJECTED" : "Pending")));
+      const calculatedScore = (isDigitalFake || isFalse) ? 0.0 : (isRequiresReview ? 1.0 : (result?.priorityScore != null ? result.priorityScore : 7.5));
+      const calculatedSeverity = (isDigitalFake || isFalse) ? "False Alarm" : (isRequiresReview ? "Requires Review" : (result?.severity || "High"));
 
-      const defaultReason = isInvalidImg
+      const defaultReason = isDigitalFake
+        ? "Classified as Digital Fake / Spoof: This image was detected as a downloaded web photo, AI synthetic image, or a photo taken of a digital screen rather than an authentic on-site emergency."
+        : isInvalidImg
         ? "Image does not appear to match a disaster emergency. Please upload a valid incident photo or provide a detailed text description."
         : (isFalse ? "Classified as False Alarm: Non-emergency report." : "Verified genuine disaster emergency.");
 
@@ -174,6 +199,7 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
         voiceTranscript,
         isOffline: !isOnline,
         isFalseAlarm: isFalse,
+        isDigitalFake,
         isRequiresReview,
         isInvalidImage: isInvalidImg,
         status: assignedStatus,
@@ -193,6 +219,7 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
 
   // Receipt / Confirmation Success Screen
   if (submittedReceipt) {
+    const isDigitalFake = Boolean(submittedReceipt.isDigitalFake);
     const isFalse = Boolean(submittedReceipt.isFalseAlarm);
     const isRequiresReview = Boolean(submittedReceipt.isRequiresReview);
     const isInvalidImg = Boolean(submittedReceipt.isInvalidImage);
@@ -201,24 +228,30 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
       <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-7 space-y-5 text-center shadow-sm">
         <div className="flex flex-col items-center">
           <div className={`w-14 h-14 rounded-full flex items-center justify-center border mb-3 ${
-            isFalse
+            isDigitalFake
+              ? "bg-red-50 text-red-600 border-red-300 ring-4 ring-red-50"
+              : isFalse
               ? "bg-amber-50 text-amber-600 border-amber-300 ring-4 ring-amber-50"
               : isRequiresReview
               ? "bg-blue-50 text-blue-600 border-blue-300 ring-4 ring-blue-50"
               : "bg-green-50 text-green-600 border-green-200 ring-4 ring-green-50"
           }`}>
-            {isFalse ? <AlertTriangle className="w-8 h-8" /> : isRequiresReview ? <AlertTriangle className="w-8 h-8" /> : <CheckCircle2 className="w-8 h-8" />}
+            {isDigitalFake || isFalse || isRequiresReview ? <AlertTriangle className="w-8 h-8" /> : <CheckCircle2 className="w-8 h-8" />}
           </div>
 
           <div className="space-y-1">
             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
-              isFalse
+              isDigitalFake
+                ? "bg-red-100 text-red-900 border-red-300"
+                : isFalse
                 ? "bg-amber-100 text-amber-900 border-amber-300"
                 : isRequiresReview
                 ? "bg-blue-100 text-blue-900 border-blue-300"
                 : "bg-green-100 text-green-900 border-green-300"
             }`}>
-              {isFalse
+              {isDigitalFake
+                ? "⚠️ Digital Fake / Spoof Detected (Score: 0.0)"
+                : isFalse
                 ? "⚠️ False Alarm / Rejected (Score: 0.0)"
                 : isRequiresReview
                 ? "🔍 Requires Review / Image Verification Failed (Score: 1.0)"
@@ -226,14 +259,18 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
             </span>
 
             <h2 className="text-2xl font-bold text-slate-900 pt-1">
-              {isFalse
+              {isDigitalFake
+                ? "Report Logged — Rejected as Digital Fake / Spoof"
+                : isFalse
                 ? "Report Logged — Marked as False Alarm / Rejected"
                 : isRequiresReview
                 ? "Report Logged — Requires Review"
                 : (t.reportSubmittedTitle || "Report Submitted Successfully")}
             </h2>
             <p className="text-xs sm:text-sm text-slate-600 max-w-sm mt-1 mx-auto">
-              {isInvalidImg
+              {isDigitalFake
+                ? "Our anti-spoofing vision engine detected this as a downloaded web image, AI-generated synthetic picture, or photo of a digital screen. Priority Score is strictly 0.0/10."
+                : isInvalidImg
                 ? "Image does not appear to match a disaster emergency. Please upload a valid incident photo or provide a detailed text description."
                 : isFalse
                 ? "Our automated AI authenticity engine evaluated this statement/image and flagged it as a false alarm. Priority Score is 0.0/10."
@@ -410,23 +447,78 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
         <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">
           {t.categoryLabel || "Incident Type"}
         </label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => setCategory(cat.id)}
-              className={`flex items-center gap-2 p-3 rounded-lg border text-left transition-all ${
-                category === cat.id
-                  ? "bg-blue-50 border-blue-600 text-blue-900 font-bold shadow-xs"
-                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              <div className="shrink-0">{cat.icon}</div>
-              <span className="text-xs">{cat.label}</span>
-            </button>
-          ))}
+        <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
+          {categories.map((cat) => {
+            if (cat.id === "other" && category === "other") {
+              return (
+                <div
+                  key={cat.id}
+                  className="flex items-center gap-2 p-2.5 sm:p-3 rounded-lg border text-left transition-all bg-blue-50 border-blue-600 text-blue-900 font-bold shadow-xs ring-1 ring-blue-600/30 min-h-[46px]"
+                >
+                  <div className="shrink-0">{cat.icon}</div>
+                  <input
+                    type="text"
+                    value={customCategory}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                    placeholder={t.other || "Type disaster..."}
+                    maxLength={50}
+                    autoFocus
+                    className="w-full bg-transparent text-xs font-semibold text-blue-900 placeholder:text-blue-500/70 focus:outline-none p-0 border-none truncate"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+              );
+            }
+
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setCategory(cat.id)}
+                className={`flex items-center gap-2 p-2.5 sm:p-3 rounded-lg border text-left transition-all min-h-[46px] ${
+                  category === cat.id
+                    ? "bg-blue-50 border-blue-600 text-blue-900 font-bold shadow-xs ring-1 ring-blue-600/30"
+                    : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <div className="shrink-0">{cat.icon}</div>
+                <span className="text-xs truncate">
+                  {cat.id === "other" && customCategory.trim() ? customCategory : cat.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
+
+        {/* Custom "Other" Incident Type text input */}
+        {category === "other" && (
+          <div className="mt-2.5 p-3.5 bg-purple-50/80 border border-purple-200 rounded-xl space-y-1.5 animate-fadeIn">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-purple-900 uppercase tracking-wide flex items-center gap-1.5">
+                <MoreHorizontal className="w-3.5 h-3.5 text-purple-600" />
+                <span>{t.otherCategoryLabel || "Specify Incident Type"}</span>
+                <span className="text-purple-700 font-semibold lowercase text-[10px] bg-purple-100 border border-purple-300 px-1.5 py-0.5 rounded">
+                  required
+                </span>
+              </label>
+              <span className="text-[11px] text-purple-600 font-mono">
+                {customCategory.length}/60
+              </span>
+            </div>
+            <input
+              type="text"
+              maxLength={60}
+              value={customCategory}
+              onChange={(e) => setCustomCategory(e.target.value)}
+              placeholder={t.otherPlaceholder || "E.g., Gas leak, Chemical spill, Landslide, Severe Hailstorm..."}
+              className="w-full bg-white border border-purple-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition-colors shadow-xs"
+              autoFocus
+            />
+            <p className="text-[11px] text-purple-700">
+              Type the specific emergency or disaster so first responders and rescue triage understand the exact hazard.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* 2. Incident Title / Headline (User Given) */}
@@ -450,6 +542,10 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
           placeholder={
             category === "flood"
               ? "E.g., Senior Care Home Ground Floor Inundated - Urgent Evacuation Needed"
+              : category === "earthquake"
+              ? "E.g., Severe Tremor Caused Partial Masonry Collapse - People Trapped"
+              : category === "tsunami"
+              ? "E.g., High-Velocity Coastal Surge Overtopping Sea Wall - Evacuating Inland"
               : category === "trapped"
               ? "E.g., 6 Family Members Stranded on 2nd Floor Roof Terrace"
               : category === "medical"
@@ -458,6 +554,8 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
               ? "E.g., High-Voltage Transformer Fire Sparking Near Flooded Street"
               : category === "bridge"
               ? "E.g., Arterial Canal Overpass Fracture Blocking Ambulance Route"
+              : category === "other"
+              ? (customCategory.trim() ? `E.g., Urgent ${customCategory.trim()} Alert - Immediate Assistance Requested` : "E.g., Urgent Specialized Incident - Immediate Assistance Requested")
               : "E.g., Urgent Distress Headline"
           }
           className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-colors shadow-xs"
@@ -477,22 +575,12 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
           setPhotoUrl={setPhotoUrl}
           aiClassification={aiClassification}
           setAiClassification={setAiClassification}
-          category={category}
+          category={category === "other" && customCategory.trim() ? customCategory.trim() : category}
           hasMedical={hasMedicalEmergency}
+          title={title}
+          description={description}
+          voiceTranscript={voiceTranscript}
         />
-        {photoUrl && aiClassification && (aiClassification.isInvalidImage || aiClassification.isValidDisaster === false || aiClassification.isFalseAlarm) && (
-          <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 shadow-xs flex items-start gap-2.5 mt-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <div className="space-y-0.5">
-              <p className="font-bold text-amber-950 text-xs leading-snug">
-                Image does not appear to match a disaster emergency. Please upload a valid incident photo or provide a detailed text description.
-              </p>
-              <p className="text-[11px] text-amber-800">
-                Priority score will be assigned {aiClassification.status === "REQUIRES_REVIEW" ? "1.0" : "0.0"} and status set to {aiClassification.status || "REJECTED"}.
-              </p>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* 4. Voice Report */}

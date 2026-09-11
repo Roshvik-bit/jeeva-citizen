@@ -22,8 +22,18 @@ export const calculatePriorityScore = (incident) => {
     isAbsoluteEmergency = false
   } = incident;
 
+  const isDigitalFake = Boolean(
+    incident.isDigitalFake ||
+    aiClassification?.isDigitalFake
+  );
+
   // 0. Image / Statement Disaster Verification Check
   const isInvalidOrFalse = Boolean(
+    isDigitalFake ||
+    incident.isFalseAlarm ||
+    incident.isInvalidImage ||
+    incident.severity === "False Alarm" ||
+    incident.status === "REJECTED" ||
     aiClassification?.isFalseAlarm ||
     aiClassification?.isValidDisaster === false ||
     aiClassification?.isFakeReport ||
@@ -32,15 +42,24 @@ export const calculatePriorityScore = (incident) => {
   );
 
   if (isInvalidOrFalse) {
+    // If digital spoof / fake was detected, it is strictly REJECTED (0.0 score) - never downgraded to "Requires Review"
     const isRequiresReview = Boolean(
-      aiClassification?.status === "REQUIRES_REVIEW" ||
-      (aiClassification?.isInvalidImage && aiClassification?.hasGenuineText)
+      !isDigitalFake && (
+        aiClassification?.status === "REQUIRES_REVIEW" ||
+        (aiClassification?.isInvalidImage && aiClassification?.hasGenuineText)
+      )
     );
     const assignedScore = isRequiresReview ? 1.0 : 0.0;
     const assignedStatus = isRequiresReview ? "REQUIRES_REVIEW" : "REJECTED";
     const assignedSeverity = isRequiresReview ? "Requires Review" : "False Alarm";
-    const reason = aiClassification?.verificationReason ||
-      "Image does not appear to match a disaster emergency. Please upload a valid incident photo or provide a detailed text description.";
+    const defaultReason = isDigitalFake
+      ? "Classified as Digital Fake / Spoof: This image was identified as a downloaded web photo, AI synthetic rendering, or a photo of a digital screen rather than an authentic on-site emergency."
+      : "Image does not appear to match a disaster emergency. Please upload a valid incident photo or provide a detailed text description.";
+    const reason = aiClassification?.verificationReason || defaultReason;
+
+    const explanationNotice = isDigitalFake
+      ? `⚠️ Digital Spoof / Recycled Photo Detected (Score: 0.0/10, Status: REJECTED). Reason: ${reason}`
+      : `⚠️ Image Verification Notice (Score: ${assignedScore}/10, Status: ${assignedStatus}). Reason: ${reason}`;
 
     return {
       priorityScore: assignedScore,
@@ -48,7 +67,8 @@ export const calculatePriorityScore = (incident) => {
       status: assignedStatus,
       isFalseAlarm: !isRequiresReview,
       isRequiresReview,
-      isInvalidImage: Boolean(aiClassification?.isInvalidImage),
+      isInvalidImage: Boolean(aiClassification?.isInvalidImage || isDigitalFake),
+      isDigitalFake: Boolean(isDigitalFake),
       isRealReport: false,
       scoreBreakdown: {
         peopleScore: 0,
@@ -58,7 +78,7 @@ export const calculatePriorityScore = (incident) => {
         absoluteEmergencyBonus: 0,
         recencyScore: 0,
         corroborationScore: 0,
-        explanation: `⚠️ Image Verification Notice (Score: ${assignedScore}/10, Status: ${assignedStatus}). Reason: ${reason}`
+        explanation: explanationNotice
       }
     };
   }
@@ -78,21 +98,29 @@ export const calculatePriorityScore = (incident) => {
   const isFireEmergency = catLower === "fire";
   const isTrappedEmergency = catLower === "trapped";
 
+  // AI Hazard Severity Weight (Max: 1.5 pts)
+  const rawAiSeverity = aiClassification?.hazardSeverity != null
+    ? Number(aiClassification.hazardSeverity)
+    : (isNaturalDisaster || isFireEmergency || isHealthEmergency ? 8.0 : 5.5);
+  const aiHazardScore = Number(((Math.min(10, Math.max(0, rawAiSeverity)) / 10) * 1.5).toFixed(1));
+
   // 1. Category Hazard Base Weight (Max: 3.5 pts)
   // Higher priority for Natural Disasters, Health Issues, Fire Emergencies, and Trapped Civilians
   let categoryScore = 1.5;
   if (isHealthEmergency) {
     categoryScore = 3.5; // Direct acute medical hazard / life preservation
   } else if (isFireEmergency) {
-    categoryScore = 3.2; // Rapidly advancing fire / combustion / smoke inhalation
+    categoryScore = (rawAiSeverity >= 8.5) ? 3.5 : 3.2; // Rapidly advancing fire / combustion / smoke inhalation
   } else if (isTrappedEmergency) {
-    categoryScore = 3.4; // Entombed or stranded civilians needing extraction
+    categoryScore = 3.5; // Entombed or stranded civilians needing extraction
   } else if (isNaturalDisaster) {
-    categoryScore = 3.0; // Flood, landslide, cyclone, earthquake, collapse
+    categoryScore = (rawAiSeverity >= 8.5) ? 3.5 : 3.0; // Severe flood, landslide, cyclone, earthquake, collapse
   } else if (catLower === "bridge") {
-    categoryScore = 2.2; // Structural bridge collapse
+    categoryScore = 2.5; // Structural bridge collapse
   } else if (catLower === "blocked_road") {
-    categoryScore = 1.4; // Transit obstruction
+    categoryScore = 1.6; // Transit obstruction
+  } else if (catLower === "other" || !["flood", "trapped", "medical", "blocked_road", "bridge", "fire", "landslide", "cyclone", "earthquake", "tsunami", "collapse"].includes(catLower)) {
+    categoryScore = (rawAiSeverity >= 8.5) ? 3.0 : 2.2; // Custom citizen incident / specialized hazard
   }
 
   // 2. Health & Medical Urgency Weight (Max: 2.5 pts)
@@ -103,19 +131,14 @@ export const calculatePriorityScore = (incident) => {
   const count = peopleCount != null ? Math.max(1, Number(peopleCount) || 1) : null;
   if (count == null && (incident.isQuickSOS || incident.isSOS || incident.title?.includes("SOS"))) {
     // 1-Tap SOS beacon: refugee/citizen panic alert carries immediate high distress baseline
-    peopleScore = 1.6;
+    peopleScore = 1.8;
   } else if (count != null) {
     if (count >= 20) peopleScore = 2.5;
-    else if (count >= 10) peopleScore = 2.0;
-    else if (count >= 5) peopleScore = 1.6;
+    else if (count >= 10) peopleScore = 2.2;
+    else if (count >= 5) peopleScore = 1.8;
+    else if (count >= 3) peopleScore = 1.5;
     else if (count >= 2) peopleScore = 1.2;
   }
-
-  // 4. AI Hazard Severity Weight (Max: 1.5 pts)
-  const rawAiSeverity = aiClassification?.hazardSeverity != null
-    ? Number(aiClassification.hazardSeverity)
-    : (isNaturalDisaster || isFireEmergency || isHealthEmergency ? 8.0 : 5.5);
-  const aiHazardScore = Number(((Math.min(10, Math.max(0, rawAiSeverity)) / 10) * 1.5).toFixed(1));
 
   // 5. Absolute Emergency Multiplier / Bonus (Max: 1.5 pts)
   // Triggered when multiple life-critical conditions coincide:
@@ -133,7 +156,8 @@ export const calculatePriorityScore = (incident) => {
     (peopleCount != null && isTrappedEmergency && Number(peopleCount) >= 5) ||
     (peopleCount != null && Number(peopleCount) >= 15 && isNaturalDisaster) ||
     aiClassification?.urgencyAssessment === "CRITICAL_IMMEDIATE_ACTION" ||
-    aiClassification?.urgencyAssessment === "LIFE_THREATENING_MEDICAL"
+    aiClassification?.urgencyAssessment === "LIFE_THREATENING_MEDICAL" ||
+    (aiClassification?.hazardSeverity >= 8.5 && (isFireEmergency || isNaturalDisaster))
   );
 
   const absoluteEmergencyBonus = isAbsolute ? 1.5 : 0.0;
