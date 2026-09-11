@@ -3,6 +3,7 @@ import { CitizenProvider, useCitizenEmergency } from "./context/CitizenContext";
 import { CitizenNavbar } from "./components/common/CitizenNavbar";
 import { ToastContainer } from "./components/common/ToastContainer";
 import { CitizenPortal } from "./components/citizen/CitizenPortal";
+import { AIChatbox } from "./components/citizen/AIChatbox";
 import { ShieldAlert, Radio, FileText, BookOpen, AlertOctagon } from "lucide-react";
 
 const CitizenAppContent = () => {
@@ -98,6 +99,9 @@ const CitizenAppContent = () => {
           </p>
         </div>
       </footer>
+
+      {/* Floating Gemini AI Emergency Intake Chatbox in Bottom-Right Corner */}
+      <AIChatbox onOpenMyReports={() => setIsDrawerOpen(true)} />
     </div>
   );
 };

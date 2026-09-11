@@ -6,6 +6,7 @@ export * from "./services/priorityScoring.js";
 export * from "./services/duplicateDetector.js";
 export * from "./services/mockAiClassifier.js";
 export * from "./services/speechRecognition.js";
+export * from "./services/geminiChatService.js";
 export * from "./mockData/rescueUnits.js";
 export * from "./mockData/translations.js";
 export * from "./mockData/preseededIncidents.js";

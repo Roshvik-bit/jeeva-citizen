@@ -734,13 +734,14 @@ export const speechService = {
     }
 
     // 2. Multimodal Gemini API Translation if key available
-    const apiKey = typeof import.meta !== "undefined" ? import.meta.env?.VITE_GEMINI_API_KEY : null;
+    const apiKey = (typeof import.meta !== "undefined" ? import.meta.env?.VITE_GEMINI_API_KEY : null) ||
+      (typeof window !== "undefined" ? (window.localStorage?.getItem("VITE_GEMINI_API_KEY") || window.localStorage?.getItem("GEMINI_API_KEY")) : null);
     if (apiKey) {
       try {
         const langName = speechService.getLanguageName(sourceLang);
         const prompt = `Translate this emergency voice note from ${langName} directly into clear, natural English for disaster dispatchers. Return ONLY the English translation without quotes or explanations:\n\n${trimmed}`;
         const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -810,14 +811,15 @@ export const speechService = {
     const langName = speechService.getLanguageName(language);
 
     // 1. Multimodal Gemini Flash Audio Transcription directly into English
-    const apiKey = typeof import.meta !== "undefined" ? import.meta.env?.VITE_GEMINI_API_KEY : null;
+    const apiKey = (typeof import.meta !== "undefined" ? import.meta.env?.VITE_GEMINI_API_KEY : null) ||
+      (typeof window !== "undefined" ? (window.localStorage?.getItem("VITE_GEMINI_API_KEY") || window.localStorage?.getItem("GEMINI_API_KEY")) : null);
     if (apiKey && audioBlob && audioBlob.size > 0) {
       try {
         const base64Audio = await speechService.convertBlobToBase64(audioBlob);
         const prompt = `Listen to this emergency voice recording spoken in ${langName}. Transcribe and translate it directly into clear, natural English for emergency rescue dispatchers. Return ONLY the English transcription text. Do not add quotes, explanations, or commentary.`;
 
         const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
