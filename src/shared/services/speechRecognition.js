@@ -884,24 +884,12 @@ export const speechService = {
       transcriptionSource = "disaster-engine";
     }
 
-    // 4. GENERATE ENGLISH AUDIO (Change audio to English from any language!)
-    let englishAudio = null;
-    try {
-      englishAudio = await speechService.generateEnglishAudioFromText(finalEnglishTranscript);
-    } catch (audioGenErr) {
-      console.warn("English audio generation notice:", audioGenErr);
-    }
-
     return {
       transcript: finalEnglishTranscript,
       originalTranscript: capturedOriginal,
       source: transcriptionSource,
       language: "en",
-      spokenLanguage: language,
-      englishAudioBlob: englishAudio?.blob || null,
-      englishAudioUrl: englishAudio?.url || null,
-      englishAudioBase64: englishAudio?.base64 || null,
-      hasEnglishAudio: Boolean(englishAudio?.url)
+      spokenLanguage: language
     };
   },
 

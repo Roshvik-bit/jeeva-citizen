@@ -15,9 +15,7 @@ import {
   Loader2,
   FileAudio,
   Volume2,
-  VolumeX,
-  Headphones,
-  Radio
+  VolumeX
 } from "lucide-react";
 
 export const VoiceRecorderModal = ({
@@ -46,15 +44,6 @@ export const VoiceRecorderModal = ({
   const [playbackProgress, setPlaybackProgress] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [audioSizeBytes, setAudioSizeBytes] = useState(0);
-
-  // Dual-track Audio: Converted English Audio & Original Spoken Audio
-  const [englishAudioUrl, setEnglishAudioUrl] = useState(null);
-  const [englishAudioBlob, setEnglishAudioBlob] = useState(null);
-  const [englishAudioBase64, setEnglishAudioBase64] = useState(null);
-  const [originalAudioUrl, setOriginalAudioUrl] = useState(null);
-  const [originalAudioBlob, setOriginalAudioBlob] = useState(null);
-  const [originalAudioBase64, setOriginalAudioBase64] = useState(null);
-  const [selectedAudioTrack, setSelectedAudioTrack] = useState("english"); // "english" | "original"
   const [isSpeakingEnglish, setIsSpeakingEnglish] = useState(false);
 
   const recorderSessionRef = useRef(null);
@@ -211,7 +200,7 @@ export const VoiceRecorderModal = ({
   };
 
   /**
-   * Stop Recording, finalize Audio Blob, translate to English, and generate English audio
+   * Stop Recording, finalize the authentic Audio Blob directly for the database, and transcribe text
    */
   const stopVoiceRecording = async () => {
     if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
@@ -228,10 +217,8 @@ export const VoiceRecorderModal = ({
       } catch (e) {}
     }
 
-    // 2. Stop MediaRecorder and retrieve original recorded audio Blob & URL
-    let originalBlob = recordedBlobRef.current;
-    let originalUrl = null;
-    let originalB64 = null;
+    // 2. Stop MediaRecorder and retrieve authentic recorded audio Blob & URL
+    let recordedBlob = recordedBlobRef.current;
     let recordedDuration = durationRef.current || recordingSeconds;
 
     if (recorderSessionRef.current) {
@@ -240,20 +227,21 @@ export const VoiceRecorderModal = ({
         recorderSessionRef.current = null;
 
         if (audioResult?.blob) {
-          originalBlob = audioResult.blob;
+          recordedBlob = audioResult.blob;
           recordedBlobRef.current = audioResult.blob;
-          setOriginalAudioBlob(audioResult.blob);
-          try {
-            originalB64 = await speechService.convertBlobToBase64(audioResult.blob);
-            setOriginalAudioBase64(originalB64);
-          } catch (b64Err) {
-            console.warn("Failed to generate original audio base64:", b64Err);
+          // Send the EXACT SAME original audio to the database!
+          if (setAudioBlob) {
+            setAudioBlob(audioResult.blob);
           }
+          speechService.convertBlobToBase64(audioResult.blob).then((b64) => {
+            if (setAudioBase64) setAudioBase64(b64);
+          }).catch((b64Err) => console.warn("Failed to generate audio base64:", b64Err));
         }
 
         if (audioResult?.url) {
-          originalUrl = audioResult.url;
-          setOriginalAudioUrl(audioResult.url);
+          if (setAudioUrl) {
+            setAudioUrl(audioResult.url);
+          }
           recordedDuration = audioResult.duration || recordedDuration;
           setAudioDuration(recordedDuration);
           setAudioSizeBytes(audioResult.sizeBytes || 0);
@@ -263,10 +251,10 @@ export const VoiceRecorderModal = ({
       }
     }
 
-    // 3. Audio-to-Text Transcription directly into ENGLISH from ANY language & Gemini English Audio generation
+    // 3. Audio-to-Text Transcription for dispatch text description (Original audio remains unchanged!)
     try {
       const transcriptionResult = await speechService.transcribeAudio({
-        audioBlob: originalBlob,
+        audioBlob: recordedBlob,
         language,
         category,
         durationSeconds: recordedDuration,
@@ -280,76 +268,30 @@ export const VoiceRecorderModal = ({
         setOriginalSpokenText(transcriptionResult.originalTranscript || null);
         setTranscriptionSource(transcriptionResult.source);
       }
-
-      // Check if English audio was generated (Gemini 2.5 Flash TTS WAV)
-      if (transcriptionResult?.englishAudioUrl) {
-        setEnglishAudioUrl(transcriptionResult.englishAudioUrl);
-        setEnglishAudioBlob(transcriptionResult.englishAudioBlob);
-        setEnglishAudioBase64(transcriptionResult.englishAudioBase64);
-        setSelectedAudioTrack("english");
-
-        // Set emergency report audio to the ENGLISH audio track by default!
-        if (setAudioUrl) setAudioUrl(transcriptionResult.englishAudioUrl);
-        if (setAudioBlob) setAudioBlob(transcriptionResult.englishAudioBlob);
-        if (setAudioBase64) setAudioBase64(transcriptionResult.englishAudioBase64);
-      } else {
-        // Fallback: If TTS unavailable, use original audio recording
-        setSelectedAudioTrack("original");
-        if (setAudioUrl && originalUrl) setAudioUrl(originalUrl);
-        if (setAudioBlob && originalBlob) setAudioBlob(originalBlob);
-        if (setAudioBase64 && originalB64) setAudioBase64(originalB64);
-      }
     } catch (transcribeErr) {
       console.warn("Transcription error:", transcribeErr);
-      // Fallback guaranteed emergency distress script in English
       const distressPair = speechService.getScriptWithEnglishTranslation(language, category);
       transcriptRef.current = distressPair.english;
       setVoiceTranscript(distressPair.english);
       setOriginalSpokenText(language !== "en" ? distressPair.original : null);
       setTranscriptionSource("disaster-engine");
-
-      if (originalUrl) {
-        setSelectedAudioTrack("original");
-        if (setAudioUrl) setAudioUrl(originalUrl);
-        if (setAudioBlob) setAudioBlob(originalBlob);
-        if (setAudioBase64) setAudioBase64(originalB64);
-      }
     } finally {
       setRecordingStatus("ready");
     }
   };
 
   /**
-   * Switch between Converted English Audio track and Original Voice recording
-   */
-  const handleSwitchTrack = (track) => {
-    if (isPlaying && audioElementRef.current) {
-      audioElementRef.current.pause();
-      setIsPlaying(false);
-    }
-    setSelectedAudioTrack(track);
-
-    const targetUrl = track === "english" ? (englishAudioUrl || originalAudioUrl) : (originalAudioUrl || englishAudioUrl);
-    const targetBlob = track === "english" ? (englishAudioBlob || originalAudioBlob) : (originalAudioBlob || englishAudioBlob);
-    const targetB64 = track === "english" ? (englishAudioBase64 || originalAudioBase64) : (originalAudioBase64 || englishAudioBase64);
-
-    if (setAudioUrl && targetUrl) setAudioUrl(targetUrl);
-    if (setAudioBlob && targetBlob) setAudioBlob(targetBlob);
-    if (setAudioBase64 && targetB64) setAudioBase64(targetB64);
-  };
-
-  /**
-   * Re-transcribe recorded audio into English and regenerate English speech
+   * Re-transcribe recorded audio into text
    */
   const handleRetranscribe = async (targetLang = language) => {
     setRecordingStatus("transcribing");
     try {
       const res = await speechService.transcribeAudio({
-        audioBlob: originalAudioBlob || recordedBlobRef.current,
+        audioBlob: recordedBlobRef.current,
         language: targetLang,
         category,
         durationSeconds: audioDuration || durationRef.current,
-        existingTranscript: "", // force fresh conversion into English
+        existingTranscript: "",
         targetLanguage: "en"
       });
 
@@ -358,16 +300,6 @@ export const VoiceRecorderModal = ({
         setVoiceTranscript(res.transcript);
         setOriginalSpokenText(res.originalTranscript || null);
         setTranscriptionSource(res.source);
-      }
-
-      if (res?.englishAudioUrl) {
-        setEnglishAudioUrl(res.englishAudioUrl);
-        setEnglishAudioBlob(res.englishAudioBlob);
-        setEnglishAudioBase64(res.englishAudioBase64);
-        setSelectedAudioTrack("english");
-        if (setAudioUrl) setAudioUrl(res.englishAudioUrl);
-        if (setAudioBlob) setAudioBlob(res.englishAudioBlob);
-        if (setAudioBase64) setAudioBase64(res.englishAudioBase64);
       }
     } catch (e) {
       console.error("Retranscribe error:", e);
@@ -381,7 +313,7 @@ export const VoiceRecorderModal = ({
   };
 
   /**
-   * Toggle Audio Preview Playback
+   * Toggle Audio Preview Playback (Plays the user's authentic recorded voice note)
    */
   const togglePlayAudio = () => {
     if (!audioElementRef.current || !audioUrl) return;
@@ -399,7 +331,7 @@ export const VoiceRecorderModal = ({
   };
 
   /**
-   * Speak English text directly using browser speech synthesis
+   * Speak English transcript text directly using browser speech synthesis
    */
   const handleSpeakEnglish = () => {
     if (isSpeakingEnglish) {
@@ -438,14 +370,6 @@ export const VoiceRecorderModal = ({
     setPlaybackProgress(0);
     recordedBlobRef.current = null;
 
-    setEnglishAudioUrl(null);
-    setEnglishAudioBlob(null);
-    setEnglishAudioBase64(null);
-    setOriginalAudioUrl(null);
-    setOriginalAudioBlob(null);
-    setOriginalAudioBase64(null);
-    setSelectedAudioTrack("english");
-
     if (setAudioBlob) setAudioBlob(null);
     if (setAudioUrl) setAudioUrl(null);
     if (setAudioBase64) setAudioBase64(null);
@@ -458,8 +382,6 @@ export const VoiceRecorderModal = ({
 
   /**
    * Simulate Voice Note for quick demonstration
-   * Smoothly animates real-time audio waveform and second counter,
-   * converts to English text, and creates a playable synthetic English audio voice note
    */
   const handleSimulateVoice = () => {
     if (isRecording || recordingStatus === "transcribing") return;
@@ -505,7 +427,6 @@ export const VoiceRecorderModal = ({
 
       try {
         const safeCat = category || "flood";
-        // Retrieve spoken distress audio text AND exact matching English dispatch text
         const distressPair = speechService.getScriptWithEnglishTranslation(language, safeCat);
         const englishTranscript = distressPair.english;
 
@@ -516,33 +437,20 @@ export const VoiceRecorderModal = ({
         setOriginalSpokenText(language !== "en" ? distressPair.original : null);
         setTranscriptionSource("disaster-engine");
 
-        // 1. Attempt real English audio speech generation with Gemini TTS
-        let englishAudioResult = null;
-        try {
-          englishAudioResult = await speechService.generateEnglishAudioFromText(englishTranscript);
-        } catch (e) {}
-
-        // 2. Fallback to valid synthesized WAV audio
-        if (!englishAudioResult?.url) {
-          englishAudioResult = await speechService.createSimulatedAudioBlob(3);
+        // Generate synthetic audio note
+        const audioResult = await speechService.createSimulatedAudioBlob(3);
+        if (audioResult?.blob) {
+          recordedBlobRef.current = audioResult.blob;
+          if (setAudioBlob) setAudioBlob(audioResult.blob);
         }
-
-        if (englishAudioResult?.blob) {
-          setEnglishAudioBlob(englishAudioResult.blob);
-          recordedBlobRef.current = englishAudioResult.blob;
-          if (setAudioBlob) setAudioBlob(englishAudioResult.blob);
+        if (audioResult?.url) {
+          if (setAudioUrl) setAudioUrl(audioResult.url);
+          setAudioDuration(3);
+          setAudioSizeBytes(audioResult.sizeBytes || 0);
         }
-        if (englishAudioResult?.url) {
-          setEnglishAudioUrl(englishAudioResult.url);
-          if (setAudioUrl) setAudioUrl(englishAudioResult.url);
-          setAudioDuration(englishAudioResult.duration || 3);
-          setAudioSizeBytes(englishAudioResult.sizeBytes || 0);
+        if (audioResult?.base64 && setAudioBase64) {
+          setAudioBase64(audioResult.base64);
         }
-        if (englishAudioResult?.base64 && setAudioBase64) {
-          setEnglishAudioBase64(englishAudioResult.base64);
-          setAudioBase64(englishAudioResult.base64);
-        }
-        setSelectedAudioTrack("english");
       } catch (simErr) {
         console.warn("Voice simulation error:", simErr);
       } finally {
@@ -655,16 +563,16 @@ export const VoiceRecorderModal = ({
             ) : recordingStatus === "transcribing" ? (
               <span className="flex items-center gap-1.5 font-bold text-blue-600 text-[11px] animate-pulse">
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
-                <span>Converting audio to English...</span>
+                <span>Transcribing speech...</span>
               </span>
             ) : audioUrl ? (
               <span className="flex items-center gap-1.5 font-bold text-emerald-700 text-[11px]">
                 <Check className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Audio Changed to English</span>
+                <span>Audio Captured ({activeLangName})</span>
               </span>
             ) : (
               <span className="text-[11px] text-slate-500 font-medium">
-                {t.listeningInLanguage || `Tap microphone to record in ${activeLangName} (Auto-converts to English)`}
+                {t.listeningInLanguage || `Tap microphone to record in ${activeLangName} (Audio sent directly to database)`}
               </span>
             )}
           </div>
@@ -715,7 +623,7 @@ export const VoiceRecorderModal = ({
             ) : recordingStatus === "transcribing" ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                <span>Translating to English...</span>
+                <span>Processing Audio...</span>
               </>
             ) : (
               <>
@@ -727,100 +635,51 @@ export const VoiceRecorderModal = ({
         </div>
       </div>
 
-      {/* Dual-Track Audio Playback Bar (When Audio Is Recorded / Generated) */}
+      {/* Audio Playback Bar (Plays user's authentic recorded voice note) */}
       {audioUrl && !isRecording && (
-        <div className="bg-gradient-to-r from-blue-50/90 to-indigo-50/80 border border-blue-200 rounded-xl p-3 space-y-2.5 animate-fadeIn">
-          {/* Track Selection Pill Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200/60 pb-2">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[11px] font-bold text-slate-800">
-                {selectedAudioTrack === "english"
-                  ? "🔊 Active Audio: Translated English Voice"
-                  : `🎙️ Active Audio: Original Voice (${activeLangName})`}
-              </span>
-            </div>
+        <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3 flex items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={togglePlayAudio}
+              className="w-8 h-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shrink-0 shadow-sm transition-colors cursor-pointer"
+              title={isPlaying ? "Pause Audio" : "Play Recorded Audio"}
+            >
+              {isPlaying ? (
+                <Pause className="w-4 h-4 fill-current" />
+              ) : (
+                <Play className="w-4 h-4 fill-current ml-0.5" />
+              )}
+            </button>
 
-            {/* Track Switch Toggle if both tracks exist */}
-            {(englishAudioUrl || originalAudioUrl) && (
-              <div className="flex items-center bg-white rounded-lg p-0.5 border border-slate-200 shadow-2xs">
-                <button
-                  type="button"
-                  onClick={() => handleSwitchTrack("english")}
-                  className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer ${
-                    selectedAudioTrack === "english"
-                      ? "bg-blue-600 text-white shadow-xs"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                  title="Play translated English audio"
-                >
-                  🇬🇧 English Audio
-                </button>
-                {originalAudioUrl && (
-                  <button
-                    type="button"
-                    onClick={() => handleSwitchTrack("original")}
-                    className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer ${
-                      selectedAudioTrack === "original"
-                        ? "bg-slate-700 text-white shadow-xs"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
-                    title={`Play original voice in ${activeLangName}`}
-                  >
-                    🎙️ Original ({activeLangName})
-                  </button>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-slate-900 truncate">
+                  Recorded Voice Note ({activeLangName})
+                </span>
+                <span className="text-[10px] font-mono text-blue-700 bg-blue-100 px-1.5 py-0.2 rounded font-bold">
+                  {speechService.formatDuration(audioDuration)}
+                </span>
+                {audioSizeBytes > 0 && (
+                  <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded font-bold">
+                    {Math.max(1, Math.round(audioSizeBytes / 1024))} KB
+                  </span>
                 )}
+                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-1.5 py-0.2 rounded">
+                  Original Audio (Sent to Database)
+                </span>
               </div>
-            )}
+              <div className="w-36 sm:w-48 bg-blue-200 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                <div
+                  className="bg-blue-600 h-full transition-all duration-100"
+                  style={{ width: `${playbackProgress}%` }}
+                />
+              </div>
+            </div>
           </div>
 
-          {/* Player Controls */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-              <button
-                type="button"
-                onClick={togglePlayAudio}
-                className="w-8 h-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shrink-0 shadow-sm transition-colors cursor-pointer"
-                title={isPlaying ? "Pause Audio" : "Play Audio"}
-              >
-                {isPlaying ? (
-                  <Pause className="w-4 h-4 fill-current" />
-                ) : (
-                  <Play className="w-4 h-4 fill-current ml-0.5" />
-                )}
-              </button>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs font-bold text-slate-900 truncate">
-                    {selectedAudioTrack === "english" ? "English Audio (Translated)" : `Spoken Voice (${activeLangName})`}
-                  </span>
-                  <span className="text-[10px] font-mono text-blue-700 bg-blue-100 px-1.5 py-0.2 rounded font-bold">
-                    {speechService.formatDuration(audioDuration)}
-                  </span>
-                  {audioSizeBytes > 0 && (
-                    <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded font-bold">
-                      {Math.max(1, Math.round(audioSizeBytes / 1024))} KB
-                    </span>
-                  )}
-                  {selectedAudioTrack === "english" && (
-                    <span className="text-[9px] font-bold text-indigo-700 bg-indigo-100 border border-indigo-200 px-1.5 py-0.2 rounded">
-                      Ready for Dispatch
-                    </span>
-                  )}
-                </div>
-
-                <div className="w-full bg-blue-200 h-1.5 rounded-full mt-1.5 overflow-hidden">
-                  <div
-                    className="bg-blue-600 h-full transition-all duration-100"
-                    style={{ width: `${playbackProgress}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              {/* Instant Browser Speech Synthesis in English */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {voiceTranscript && (
               <button
                 type="button"
                 onClick={handleSpeakEnglish}
@@ -829,7 +688,7 @@ export const VoiceRecorderModal = ({
                     ? "bg-amber-500 text-white border-amber-600 animate-pulse"
                     : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-blue-600"
                 }`}
-                title={isSpeakingEnglish ? "Stop speaking English" : "Listen to English voice reading this note"}
+                title={isSpeakingEnglish ? "Stop speaking" : "Listen to English transcript read aloud"}
               >
                 {isSpeakingEnglish ? (
                   <>
@@ -843,16 +702,16 @@ export const VoiceRecorderModal = ({
                   </>
                 )}
               </button>
+            )}
 
-              <button
-                type="button"
-                onClick={handleDiscardAudio}
-                className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-white transition-colors cursor-pointer"
-                title="Delete recorded audio"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleDiscardAudio}
+              className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-white transition-colors cursor-pointer"
+              title="Delete recorded audio"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}
@@ -869,10 +728,10 @@ export const VoiceRecorderModal = ({
               )}
               <span>
                 {recordingStatus === "transcribing"
-                  ? "Transcribing & translating audio to English..."
+                  ? "Transcribing audio to text..."
                   : language !== "en"
-                  ? `Audio Transcribed & Converted to English (Spoken in ${activeLangName})`
-                  : "Audio Transcribed & Converted to English"}
+                  ? `Audio Transcribed (Spoken in ${activeLangName})`
+                  : "Audio Transcribed"}
               </span>
             </span>
 
@@ -882,7 +741,7 @@ export const VoiceRecorderModal = ({
                   type="button"
                   onClick={() => handleRetranscribe(language)}
                   className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-[11px] font-semibold transition-colors cursor-pointer"
-                  title="Re-convert audio to English text"
+                  title="Re-transcribe audio"
                 >
                   <RefreshCw className="w-3 h-3" />
                   <span>{t.retranscribe || "Re-transcribe"}</span>
@@ -910,7 +769,7 @@ export const VoiceRecorderModal = ({
               <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500">
                 <span className="flex items-center gap-1">
                   <Languages className="w-3 h-3 text-blue-600" />
-                  <span>Spoken Audio ({activeLangName}):</span>
+                  <span>Spoken Words ({activeLangName}):</span>
                 </span>
                 <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded text-[9px] font-mono">
                   Captured Voice
@@ -922,12 +781,12 @@ export const VoiceRecorderModal = ({
             </div>
           )}
 
-          {/* Official English Transcript Input */}
+          {/* Official Dispatch Transcript Input */}
           <div className="space-y-1">
             <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-blue-800">
               <span className="flex items-center gap-1">
                 <Volume2 className="w-3.5 h-3.5 text-blue-600" />
-                <span>English Dispatch Audio & Transcript:</span>
+                <span>Dispatch Transcript (For Rescue Teams):</span>
               </span>
               <span className="text-[9px] text-blue-600 font-medium">Editable for rescue command</span>
             </div>
@@ -937,10 +796,10 @@ export const VoiceRecorderModal = ({
               onChange={(e) => setVoiceTranscript(e.target.value)}
               placeholder={
                 isRecording
-                  ? `Speaking in ${activeLangName}... Transcribing and converting audio directly into English.`
+                  ? `Speaking in ${activeLangName}... Transcribing speech for rescue command.`
                   : recordingStatus === "transcribing"
-                  ? "Transcribing and converting audio to English..."
-                  : "English transcript will appear here. Tap to edit or add details..."
+                  ? "Transcribing audio..."
+                  : "Dispatch transcript will appear here. Tap to edit or add details..."
               }
               className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 leading-relaxed resize-none shadow-inner"
             />
@@ -949,16 +808,16 @@ export const VoiceRecorderModal = ({
           <p className="text-[10px] text-slate-500 flex items-center justify-between">
             <span>
               {language !== "en"
-                ? `Spoken in ${activeLangName} → Converted into English audio for rescue teams`
-                : (t.editableTranscriptHint || "Editable transcript — audio converted to English for rescue teams")}
+                ? `Spoken in ${activeLangName} • Original audio sent directly to database & rescue command`
+                : (t.editableTranscriptHint || "Original audio sent directly to database • Editable text transcript for responders")}
             </span>
             {transcriptionSource && (
               <span className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-bold">
                 {transcriptionSource === "live-speech"
-                  ? "Live Mic STT → EN"
+                  ? "Live Mic STT"
                   : transcriptionSource === "gemini-ai"
-                  ? "Gemini Multimodal → EN"
-                  : "Disaster AI Engine → EN"}
+                  ? "Gemini Multimodal"
+                  : "Disaster AI Engine"}
               </span>
             )}
           </p>
