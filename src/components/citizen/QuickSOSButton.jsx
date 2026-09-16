@@ -26,6 +26,9 @@ export const QuickSOSButton = () => {
   const [isBlocked, setIsBlocked] = useState(false);
   const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
 
+  // Location is permitted only if not blocked and coordinates are successfully acquired
+  const isLocationPermitted = !isBlocked && !!gpsCoords;
+
   // GPS Auto-Detection Function
   const handleAutoDetectGPS = useCallback(async (showFeedback = true) => {
     setIsDetectingGps(true);
@@ -114,6 +117,19 @@ export const QuickSOSButton = () => {
   }, [countdown, playEmergencyAudio]);
 
   const handleStartSOS = () => {
+    // SOS is disabled unless location permission is granted and GPS is detected
+    if (!isLocationPermitted) {
+      setIsPermissionModalOpen(true);
+      if (addToast) {
+        addToast({
+          type: "error",
+          title: "Location Access Required",
+          message: "SOS button is disabled until location access is allowed."
+        });
+      }
+      return;
+    }
+
     playEmergencyAudio("beep");
     // Pre-buffer audio on direct user touch/click gesture so playback is instantaneous
     try {
@@ -132,11 +148,6 @@ export const QuickSOSButton = () => {
 
   const handleExecuteSOS = async () => {
     setIsSuccess(true);
-
-    // If location was blocked, show the permission modal prompt
-    if (isBlocked) {
-      setIsPermissionModalOpen(true);
-    }
 
     // Dispatch SOS tagged with the auto-detected GPS location
     await triggerQuickSOS(gpsCoords);
@@ -183,23 +194,12 @@ export const QuickSOSButton = () => {
 
           {/* GPS Coordinates Tag Status in Countdown */}
           <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium my-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
-            {isBlocked ? (
-              <>
-                <MapPinOff className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                <span className="text-red-700 font-semibold truncate">
-                  Couldn't detect GPS (Permission blocked)
-                </span>
-              </>
-            ) : (
-              <>
-                <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span className="truncate">
-                  {gpsCoords
-                    ? `Tagging GPS: ${gpsCoords.lat.toFixed(4)}°N, ${gpsCoords.lng.toFixed(4)}°E`
-                    : "Auto-detecting live GPS coordinates..."}
-                </span>
-              </>
-            )}
+            <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="truncate">
+              {gpsCoords
+                ? `Tagging GPS: ${gpsCoords.lat.toFixed(4)}°N, ${gpsCoords.lng.toFixed(4)}°E`
+                : "Auto-detecting live GPS coordinates..."}
+            </span>
           </div>
 
           <button
@@ -222,42 +222,68 @@ export const QuickSOSButton = () => {
           <p className="text-xs text-slate-600 mt-1">
             {t.teamsNotifiedDesc || "Rescue response teams notified. Keep phone on high volume."}
           </p>
-          {gpsCoords ? (
+          {gpsCoords && (
             <div className="mt-3 text-[11px] font-mono text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 inline-block">
               📍 Transmitted: {gpsCoords.lat.toFixed(4)}°N, {gpsCoords.lng.toFixed(4)}°E (±{gpsCoords.accuracy}m)
             </div>
-          ) : isBlocked ? (
-            <div className="mt-3 text-[11px] font-medium text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 inline-block">
-              ⚠️ GPS blocked: Grid center fallback dispatched
-            </div>
-          ) : null}
+          )}
         </div>
       ) : (
         // Default SOS Button View
         <div className="flex flex-col items-center w-full">
-          {/* Main SOS Beacon Button */}
+          {/* Main SOS Beacon Button: Active when location is permitted, Disabled when location is blocked */}
           <button
+            type="button"
             onClick={handleStartSOS}
-            className="group relative flex items-center justify-center w-48 h-48 sm:w-52 sm:h-52 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-xl hover:shadow-2xl transition-all active:scale-95 focus:outline-none focus:ring-4 focus:ring-red-200"
-            aria-label="Trigger Emergency SOS"
+            className={`group relative flex items-center justify-center w-48 h-48 sm:w-52 sm:h-52 rounded-full transition-all focus:outline-none ${
+              isLocationPermitted
+                ? "bg-red-600 hover:bg-red-700 text-white shadow-xl hover:shadow-2xl active:scale-95 focus:ring-4 focus:ring-red-200 cursor-pointer"
+                : "bg-slate-200 text-slate-400 border-4 border-slate-300 shadow-none cursor-not-allowed"
+            }`}
+            aria-label={isLocationPermitted ? "Trigger Emergency SOS" : "SOS button disabled - location access required"}
+            aria-disabled={!isLocationPermitted}
           >
-            {/* Outer subtle beacon ring */}
-            <span className="absolute inset-0 rounded-full border-4 border-red-400/40 animate-ping-slow pointer-events-none" />
+            {/* Outer subtle beacon ring (Only when active and location is permitted) */}
+            {isLocationPermitted && (
+              <span className="absolute inset-0 rounded-full border-4 border-red-400/40 animate-ping-slow pointer-events-none" />
+            )}
 
             <div className="flex flex-col items-center text-center px-4">
-              <AlertOctagon className="w-12 h-12 sm:w-14 sm:h-14 mb-2 stroke-[2.5] group-hover:scale-110 transition-transform" />
-              <span className="text-2xl sm:text-3xl font-black tracking-wider uppercase font-mono">
+              {isLocationPermitted ? (
+                <AlertOctagon className="w-12 h-12 sm:w-14 sm:h-14 mb-2 stroke-[2.5] group-hover:scale-110 transition-transform text-white" />
+              ) : (
+                <MapPinOff className="w-12 h-12 sm:w-14 sm:h-14 mb-2 stroke-[2] text-slate-400" />
+              )}
+
+              <span
+                className={`text-2xl sm:text-3xl font-black tracking-wider uppercase font-mono ${
+                  isLocationPermitted ? "text-white" : "text-slate-400"
+                }`}
+              >
                 {t.sosButton || "SOS"}
               </span>
-              <span className="text-[10px] sm:text-xs font-semibold text-red-100 mt-1 uppercase tracking-wider">
-                {t.oneTouchSos || "Emergency Alert"}
+
+              <span
+                className={`text-[10px] sm:text-xs font-bold mt-1 uppercase tracking-wider ${
+                  isLocationPermitted ? "text-red-100" : "text-slate-500"
+                }`}
+              >
+                {isLocationPermitted ? (t.oneTouchSos || "Emergency Alert") : "GPS Required"}
               </span>
             </div>
           </button>
 
-          <p className="text-xs text-slate-500 mt-3 text-center max-w-xs leading-relaxed">
-            {t.sosSubtitle || "Captures GPS & notifies rescue control"}
-          </p>
+          {/* Subtitle status below SOS button */}
+          {isLocationPermitted ? (
+            <p className="text-xs text-slate-500 mt-3 text-center max-w-xs leading-relaxed">
+              {t.sosSubtitle || "Captures GPS & notifies rescue control"}
+            </p>
+          ) : (
+            <p className="text-xs font-bold text-red-600 mt-3 text-center max-w-xs leading-relaxed flex items-center justify-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span>SOS button disabled until location access is allowed</span>
+            </p>
+          )}
 
           {/* Dedicated "Auto Detect GPS" Button and Live Coordinates / Blocked Card */}
           <div className="mt-4 w-full max-w-xs flex flex-col items-center gap-2">
