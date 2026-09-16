@@ -80,7 +80,7 @@ export const NotFoundPage = () => {
             </div>
           </div>
 
-          {/* Action Buttons: Return to Home, Go Back, and Call 112 */}
+          {/* Action Buttons: Return to Emergency Portal, Go Back, and Call 112 */}
           <div className="flex flex-col gap-2.5">
             <div className="flex flex-col sm:flex-row gap-2.5">
               <button
@@ -88,7 +88,7 @@ export const NotFoundPage = () => {
                 className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-sm transition-all active:scale-[0.98]"
               >
                 <Home className="w-4 h-4" />
-                <span>Return to Home</span>
+                <span>Return to Emergency Portal</span>
               </button>
               <button
                 onClick={() => navigate(-1)}
@@ -101,9 +101,9 @@ export const NotFoundPage = () => {
 
             <a
               href="tel:112"
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold transition-all active:scale-[0.98]"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-sm transition-all active:scale-[0.98]"
             >
-              <PhoneCall className="w-3.5 h-3.5" />
+              <PhoneCall className="w-4 h-4" />
               <span>Call Emergency Helpline (112)</span>
             </a>
           </div>
