@@ -7,7 +7,7 @@ import { CitizenPortal } from "./components/citizen/CitizenPortal";
 import { AIChatbox } from "./components/citizen/AIChatbox";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { NotFoundPage } from "./components/common/NotFoundPage";
-import { ShieldAlert, Radio, FileText, BookOpen, AlertOctagon } from "lucide-react";
+import { Radio, FileText, BookOpen, AlertOctagon } from "lucide-react";
 
 const CitizenAppContent = () => {
   const { t } = useCitizenEmergency();
@@ -77,7 +77,9 @@ const CitizenAppContent = () => {
       <footer className="border-t border-slate-200 bg-white py-6 px-4 text-xs text-slate-500 hidden sm:block">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-slate-700">
-            <ShieldAlert className="w-4 h-4 text-blue-600" />
+            <div className="w-5 h-5 rounded-md overflow-hidden bg-white border border-slate-200 flex items-center justify-center p-0.5 shrink-0 shadow-2xs">
+              <img src="/logo.png" alt="JEEVA Logo" className="w-full h-full object-contain" />
+            </div>
             <span className="font-bold text-slate-900">{t.appName || "JEEVA"}</span>
             <span>• Citizen Emergency Reporting & SOS System</span>
           </div>
