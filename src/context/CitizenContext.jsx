@@ -617,10 +617,12 @@ export const CitizenProvider = ({ children }) => {
   );
 
   // 1-Tap Quick SOS Trigger
-  const triggerQuickSOS = useCallback(async () => {
+  const triggerQuickSOS = useCallback(async (customCoords = null) => {
     playEmergencyAudio("siren");
-    const coords = await geoService.getCurrentCoordinates();
-    const address = geoService.getReadableAddress(coords.lat, coords.lng);
+    const coords = (customCoords && customCoords.lat && customCoords.lng)
+      ? customCoords
+      : await geoService.getCurrentCoordinates();
+    const address = customCoords?.address || geoService.getReadableAddress(coords.lat, coords.lng);
 
     const sosPayload = {
       title: "CRITICAL 1-TAP SOS DISTRESS BEACON",
@@ -635,7 +637,8 @@ export const CitizenProvider = ({ children }) => {
         lat: coords.lat,
         lng: coords.lng,
         address: address,
-        landmark: "GPS Beacon Tag"
+        landmark: customCoords?.landmark || "GPS Beacon Tag",
+        accuracy: coords.accuracy || 10
       },
       photoUrl: null,
       voiceTranscript: "AUTOMATIC SOS: User pressed instant emergency distress button."
