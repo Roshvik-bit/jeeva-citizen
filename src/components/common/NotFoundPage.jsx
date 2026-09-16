@@ -1,7 +1,12 @@
 import React, { useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { AlertTriangle, Home, PhoneCall, ShieldAlert, ArrowLeft } from "lucide-react";
 
-export const NotFoundPage = ({ currentPath, onNavigateHome }) => {
+export const NotFoundPage = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const currentPath = location.pathname + location.search;
+
   useEffect(() => {
     const originalTitle = document.title;
     document.title = "404 - Page Not Found | JEEVA";
@@ -10,17 +15,9 @@ export const NotFoundPage = ({ currentPath, onNavigateHome }) => {
     };
   }, []);
 
-  const handleGoHome = () => {
-    if (onNavigateHome) {
-      onNavigateHome();
-    } else {
-      window.location.href = "/";
-    }
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F9FC] text-[#1F2937]">
-      {/* Minimal Header */}
+      {/* Header */}
       <header className="border-b border-slate-200 bg-white shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -47,7 +44,7 @@ export const NotFoundPage = ({ currentPath, onNavigateHome }) => {
         </div>
       </header>
 
-      {/* Main Error Content */}
+      {/* Main 404 Error Content */}
       <main className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="max-w-md w-full bg-white border border-slate-200 rounded-2xl shadow-md p-6 sm:p-8 text-center">
           {/* Warning Icon Badge */}
@@ -71,7 +68,7 @@ export const NotFoundPage = ({ currentPath, onNavigateHome }) => {
           {/* Path Display */}
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 mb-6 text-xs text-slate-600 break-all font-mono">
             <span className="text-slate-400 select-none">Path: </span>
-            <span className="text-red-600 font-semibold">{currentPath || window.location.pathname}</span>
+            <span className="text-red-600 font-semibold">{currentPath}</span>
           </div>
 
           {/* Urgent Helpline Alert Box */}
@@ -83,27 +80,37 @@ export const NotFoundPage = ({ currentPath, onNavigateHome }) => {
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-2.5">
-            <button
-              onClick={handleGoHome}
-              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-sm transition-all active:scale-[0.98]"
-            >
-              <Home className="w-4 h-4" />
-              <span>Back to Emergency Portal</span>
-            </button>
+          {/* Action Buttons: Return to Home, Go Back, and Call 112 */}
+          <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <button
+                onClick={() => navigate("/")}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-sm transition-all active:scale-[0.98]"
+              >
+                <Home className="w-4 h-4" />
+                <span>Return to Home</span>
+              </button>
+              <button
+                onClick={() => navigate(-1)}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold transition-all active:scale-[0.98]"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Go Back</span>
+              </button>
+            </div>
+
             <a
               href="tel:112"
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-sm transition-all active:scale-[0.98]"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold transition-all active:scale-[0.98]"
             >
-              <PhoneCall className="w-4 h-4" />
-              <span>Call 112</span>
+              <PhoneCall className="w-3.5 h-3.5" />
+              <span>Call Emergency Helpline (112)</span>
             </a>
           </div>
         </div>
       </main>
 
-      {/* Minimal Footer */}
+      {/* Footer */}
       <footer className="border-t border-slate-200 bg-white py-4 px-4 text-center text-xs text-slate-400">
         JEEVA Citizen Emergency Response Network • Official Disaster Field Support
       </footer>

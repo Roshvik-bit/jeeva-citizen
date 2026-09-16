@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { CitizenProvider, useCitizenEmergency } from "./context/CitizenContext";
 import { CitizenNavbar } from "./components/common/CitizenNavbar";
 import { ToastContainer } from "./components/common/ToastContainer";
@@ -111,35 +112,18 @@ const CitizenAppContent = () => {
 };
 
 export default function App() {
-  const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
-
-  useEffect(() => {
-    const handleLocationChange = () => {
-      setCurrentPath(window.location.pathname);
-    };
-
-    window.addEventListener("popstate", handleLocationChange);
-    return () => window.removeEventListener("popstate", handleLocationChange);
-  }, []);
-
-  const normalizedPath = currentPath.replace(/\/+$/, "") || "/";
-  const isHome = normalizedPath === "/" || normalizedPath === "/index.html";
-
-  if (!isHome) {
-    return (
-      <NotFoundPage
-        currentPath={currentPath}
-        onNavigateHome={() => {
-          window.history.pushState({}, "", "/");
-          setCurrentPath("/");
-        }}
-      />
-    );
-  }
-
   return (
-    <CitizenProvider>
-      <CitizenAppContent />
-    </CitizenProvider>
+    <BrowserRouter>
+      <CitizenProvider>
+        <Routes>
+          {/* Main Citizen Emergency Portal */}
+          <Route path="/" element={<CitizenAppContent />} />
+          <Route path="/index.html" element={<CitizenAppContent />} />
+
+          {/* Catch-all Wildcard Route for any unmatched paths */}
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </CitizenProvider>
+    </BrowserRouter>
   );
 }
