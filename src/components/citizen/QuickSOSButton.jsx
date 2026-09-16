@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useCitizenEmergency } from "../../context/CitizenContext";
 import { geoService } from "@jeeva/shared";
+import { LocationPermissionModal } from "./LocationPermissionModal";
 import {
   AlertOctagon,
   X,
   Check,
   LocateFixed,
   MapPin,
+  MapPinOff,
   RefreshCw,
   Loader2,
-  Navigation
+  AlertTriangle
 } from "lucide-react";
 
 export const QuickSOSButton = () => {
@@ -21,13 +23,42 @@ export const QuickSOSButton = () => {
   const [isDetectingGps, setIsDetectingGps] = useState(false);
   const [gpsCoords, setGpsCoords] = useState(null);
   const [gpsError, setGpsError] = useState(null);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
 
   // GPS Auto-Detection Function
   const handleAutoDetectGPS = useCallback(async (showFeedback = true) => {
     setIsDetectingGps(true);
     setGpsError(null);
+
     try {
+      // Check browser permissions if available
+      const permState = await geoService.checkPermissionState();
+      if (permState === "denied") {
+        setIsBlocked(true);
+        setGpsCoords(null);
+        setGpsError("Location access is blocked in browser settings.");
+        setIsPermissionModalOpen(true);
+        setIsDetectingGps(false);
+        return;
+      }
+
       const coords = await geoService.getCurrentCoordinates();
+
+      // Check if location access was blocked or denied
+      if (coords.isBlocked) {
+        setIsBlocked(true);
+        setGpsCoords(null);
+        setGpsError("Location access is blocked in browser settings.");
+        setIsPermissionModalOpen(true);
+        setIsDetectingGps(false);
+        return;
+      }
+
+      // Permission granted and coordinates acquired successfully
+      setIsBlocked(false);
+      setIsPermissionModalOpen(false);
+
       let address = "";
       try {
         address = await geoService.reverseGeocodeOSM(coords.lat, coords.lng);
@@ -54,20 +85,16 @@ export const QuickSOSButton = () => {
       }
     } catch (err) {
       console.warn("Auto Detect GPS error:", err);
-      setGpsError("Unable to acquire high-accuracy GPS.");
-      if (showFeedback && addToast) {
-        addToast({
-          type: "error",
-          title: "GPS Error",
-          message: "Could not auto-detect GPS. Please enable location permissions."
-        });
-      }
+      setIsBlocked(true);
+      setGpsCoords(null);
+      setGpsError("Couldn't detect GPS. Location access is blocked.");
+      setIsPermissionModalOpen(true);
     } finally {
       setIsDetectingGps(false);
     }
   }, [addToast]);
 
-  // Auto-detect location in background on mount
+  // Check and auto-detect on mount
   useEffect(() => {
     handleAutoDetectGPS(false);
   }, [handleAutoDetectGPS]);
@@ -105,8 +132,15 @@ export const QuickSOSButton = () => {
 
   const handleExecuteSOS = async () => {
     setIsSuccess(true);
+
+    // If location was blocked, show the permission modal prompt
+    if (isBlocked) {
+      setIsPermissionModalOpen(true);
+    }
+
     // Dispatch SOS tagged with the auto-detected GPS location
     await triggerQuickSOS(gpsCoords);
+
     setTimeout(() => {
       setIsSuccess(false);
     }, 4000);
@@ -114,6 +148,14 @@ export const QuickSOSButton = () => {
 
   return (
     <div className="flex flex-col items-center justify-center p-4">
+      {/* Location Permission Guidance Modal Pop-up */}
+      <LocationPermissionModal
+        isOpen={isPermissionModalOpen}
+        onClose={() => setIsPermissionModalOpen(false)}
+        onRetry={() => handleAutoDetectGPS(true)}
+        isRetrying={isDetectingGps}
+      />
+
       {countdown !== null ? (
         // Countdown Failsafe State (3 -> 2 -> 1) with Blinking Light (No Step Badges or Extra Text)
         <div className="w-full max-w-sm bg-white border-2 border-red-600 rounded-2xl p-6 shadow-xl text-center flex flex-col items-center">
@@ -141,12 +183,23 @@ export const QuickSOSButton = () => {
 
           {/* GPS Coordinates Tag Status in Countdown */}
           <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium my-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
-            <MapPin className="w-3.5 h-3.5 text-red-600 shrink-0" />
-            <span className="truncate">
-              {gpsCoords
-                ? `Tagging GPS: ${gpsCoords.lat.toFixed(4)}°N, ${gpsCoords.lng.toFixed(4)}°E`
-                : "Auto-detecting live GPS coordinates..."}
-            </span>
+            {isBlocked ? (
+              <>
+                <MapPinOff className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                <span className="text-red-700 font-semibold truncate">
+                  Couldn't detect GPS (Permission blocked)
+                </span>
+              </>
+            ) : (
+              <>
+                <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate">
+                  {gpsCoords
+                    ? `Tagging GPS: ${gpsCoords.lat.toFixed(4)}°N, ${gpsCoords.lng.toFixed(4)}°E`
+                    : "Auto-detecting live GPS coordinates..."}
+                </span>
+              </>
+            )}
           </div>
 
           <button
@@ -169,11 +222,15 @@ export const QuickSOSButton = () => {
           <p className="text-xs text-slate-600 mt-1">
             {t.teamsNotifiedDesc || "Rescue response teams notified. Keep phone on high volume."}
           </p>
-          {gpsCoords && (
+          {gpsCoords ? (
             <div className="mt-3 text-[11px] font-mono text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 inline-block">
               📍 Transmitted: {gpsCoords.lat.toFixed(4)}°N, {gpsCoords.lng.toFixed(4)}°E (±{gpsCoords.accuracy}m)
             </div>
-          )}
+          ) : isBlocked ? (
+            <div className="mt-3 text-[11px] font-medium text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 inline-block">
+              ⚠️ GPS blocked: Grid center fallback dispatched
+            </div>
+          ) : null}
         </div>
       ) : (
         // Default SOS Button View
@@ -202,14 +259,22 @@ export const QuickSOSButton = () => {
             {t.sosSubtitle || "Captures GPS & notifies rescue control"}
           </p>
 
-          {/* Dedicated "Auto Detect GPS" Button and Live Coordinates Card */}
+          {/* Dedicated "Auto Detect GPS" Button and Live Coordinates / Blocked Card */}
           <div className="mt-4 w-full max-w-xs flex flex-col items-center gap-2">
             <button
               type="button"
-              onClick={() => handleAutoDetectGPS(true)}
+              onClick={() => {
+                if (isBlocked) {
+                  setIsPermissionModalOpen(true);
+                } else {
+                  handleAutoDetectGPS(true);
+                }
+              }}
               disabled={isDetectingGps}
               className={`w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-xs border ${
-                gpsCoords
+                isBlocked
+                  ? "bg-red-50 text-red-700 border-red-300 hover:bg-red-100 active:scale-[0.98]"
+                  : gpsCoords
                   ? "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
                   : isDetectingGps
                   ? "bg-slate-100 text-slate-500 border-slate-200 cursor-wait"
@@ -220,6 +285,11 @@ export const QuickSOSButton = () => {
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
                   <span>Auto-Detecting GPS...</span>
+                </>
+              ) : isBlocked ? (
+                <>
+                  <MapPinOff className="w-4 h-4 text-red-600 stroke-[2.5]" />
+                  <span>Couldn't Detect GPS</span>
                 </>
               ) : gpsCoords ? (
                 <>
@@ -235,8 +305,8 @@ export const QuickSOSButton = () => {
               )}
             </button>
 
-            {/* GPS Location Details Card */}
-            {gpsCoords ? (
+            {/* GPS Location Details Card (When detected) */}
+            {gpsCoords && !isBlocked && (
               <div className="w-full bg-emerald-50/70 border border-emerald-200 rounded-xl p-2.5 text-left text-xs text-emerald-900 flex items-start gap-2 shadow-2xs">
                 <span className="relative flex h-2.5 w-2.5 mt-1 shrink-0">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -261,11 +331,33 @@ export const QuickSOSButton = () => {
                   )}
                 </div>
               </div>
-            ) : gpsError ? (
-              <div className="w-full bg-amber-50 border border-amber-200 rounded-xl p-2 text-xs text-amber-800 text-center">
-                {gpsError}
+            )}
+
+            {/* Blocked GPS Notice Card */}
+            {isBlocked && (
+              <div className="w-full bg-red-50 border border-red-200 rounded-xl p-2.5 text-left text-xs text-red-900 flex items-center justify-between gap-2 shadow-2xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                    <MapPinOff className="w-3.5 h-3.5 text-red-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="font-bold text-red-950 block truncate">
+                      Couldn't detect GPS
+                    </span>
+                    <span className="text-[11px] text-red-700 block truncate">
+                      Location access is blocked
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsPermissionModalOpen(true)}
+                  className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] rounded-lg shrink-0 transition-colors shadow-2xs cursor-pointer"
+                >
+                  Turn On
+                </button>
               </div>
-            ) : null}
+            )}
           </div>
         </div>
       )}

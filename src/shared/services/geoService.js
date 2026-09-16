@@ -42,7 +42,8 @@ export const geoService = {
               lat: Number(pos.coords.latitude.toFixed(5)),
               lng: Number(pos.coords.longitude.toFixed(5)),
               accuracy: Math.round(pos.coords.accuracy || 10),
-              isSimulated: false
+              isSimulated: false,
+              isBlocked: false
             });
           },
           (err) => {
@@ -54,7 +55,10 @@ export const geoService = {
               lat: Number((13.0827 + jitterLat).toFixed(5)),
               lng: Number((80.2707 + jitterLng).toFixed(5)),
               accuracy: 12,
-              isSimulated: true
+              isSimulated: true,
+              isBlocked: err.code === 1,
+              errorCode: err.code,
+              errorMessage: err.message
             });
           },
           { timeout: 5000, enableHighAccuracy: true }
@@ -63,11 +67,26 @@ export const geoService = {
         resolve({
           lat: 13.0827,
           lng: 80.2707,
-          accuracy: 15,
-          isSimulated: true
+          accuracy: 50,
+          isSimulated: true,
+          isBlocked: true,
+          errorMessage: "Geolocation not supported in browser"
         });
       }
     });
+  },
+
+  /**
+   * Checks current geolocation permission status
+   */
+  checkPermissionState: async () => {
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        const status = await navigator.permissions.query({ name: "geolocation" });
+        return status.state; // 'granted' | 'prompt' | 'denied'
+      }
+    } catch (_) {}
+    return "unknown";
   },
 
   /**
