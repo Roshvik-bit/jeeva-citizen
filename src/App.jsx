@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { CitizenProvider, useCitizenEmergency } from "./context/CitizenContext";
 import { CitizenNavbar } from "./components/common/CitizenNavbar";
 import { ToastContainer } from "./components/common/ToastContainer";
 import { CitizenPortal } from "./components/citizen/CitizenPortal";
 import { AIChatbox } from "./components/citizen/AIChatbox";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
+import { NotFoundPage } from "./components/common/NotFoundPage";
 import { ShieldAlert, Radio, FileText, BookOpen, AlertOctagon } from "lucide-react";
 
 const CitizenAppContent = () => {
@@ -110,6 +111,32 @@ const CitizenAppContent = () => {
 };
 
 export default function App() {
+  const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
+
+  useEffect(() => {
+    const handleLocationChange = () => {
+      setCurrentPath(window.location.pathname);
+    };
+
+    window.addEventListener("popstate", handleLocationChange);
+    return () => window.removeEventListener("popstate", handleLocationChange);
+  }, []);
+
+  const normalizedPath = currentPath.replace(/\/+$/, "") || "/";
+  const isHome = normalizedPath === "/" || normalizedPath === "/index.html";
+
+  if (!isHome) {
+    return (
+      <NotFoundPage
+        currentPath={currentPath}
+        onNavigateHome={() => {
+          window.history.pushState({}, "", "/");
+          setCurrentPath("/");
+        }}
+      />
+    );
+  }
+
   return (
     <CitizenProvider>
       <CitizenAppContent />
