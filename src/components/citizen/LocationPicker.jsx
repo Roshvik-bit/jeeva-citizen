@@ -1,9 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
 import L from "leaflet";
 import { geoService, LANDMARK_PRESETS } from "@jeeva/shared";
-import { MapPin, Navigation, Compass, CheckCircle2, Map as MapIcon, ChevronDown, ChevronUp } from "lucide-react";
+import { MapPin, MapPinOff, Navigation, Compass, CheckCircle2, Map as MapIcon, ChevronDown, ChevronUp } from "lucide-react";
 
-export const LocationPicker = ({ location, setLocation }) => {
+export const LocationPicker = ({
+  location,
+  setLocation,
+  isLocationPermitted = true,
+  setIsLocationPermitted,
+  onOpenPermissionModal
+}) => {
   const [isLocating, setIsLocating] = useState(false);
   const [showPresets, setShowPresets] = useState(false);
   const [showMap, setShowMap] = useState(true);
@@ -15,21 +21,44 @@ export const LocationPicker = ({ location, setLocation }) => {
   const handleAutoDetect = async () => {
     setIsLocating(true);
     try {
+      const permState = await geoService.checkPermissionState();
+      if (permState === "denied") {
+        if (setIsLocationPermitted) setIsLocationPermitted(false);
+        if (onOpenPermissionModal) onOpenPermissionModal();
+        return;
+      }
+
       const coords = await geoService.getCurrentCoordinates();
-      const address = await geoService.reverseGeocodeOSM(coords.lat, coords.lng);
+      if (coords.isBlocked) {
+        if (setIsLocationPermitted) setIsLocationPermitted(false);
+        if (onOpenPermissionModal) onOpenPermissionModal();
+        return;
+      }
+
+      let address = "";
+      try {
+        address = await geoService.reverseGeocodeOSM(coords.lat, coords.lng);
+      } catch (_) {
+        address = geoService.getReadableAddress(coords.lat, coords.lng);
+      }
+
       setLocation({
         lat: coords.lat,
         lng: coords.lng,
-        address: address,
+        address: address || geoService.getReadableAddress(coords.lat, coords.lng),
         landmark: coords.isSimulated ? "Simulated Grid Pin" : "GPS Triangulated",
-        accuracy: coords.accuracy
+        accuracy: coords.accuracy || 10
       });
+
+      if (setIsLocationPermitted) setIsLocationPermitted(true);
 
       if (mapInstanceRef.current) {
         mapInstanceRef.current.flyTo([coords.lat, coords.lng], 15, { duration: 1 });
       }
     } catch (err) {
       console.error("GPS detection error:", err);
+      if (setIsLocationPermitted) setIsLocationPermitted(false);
+      if (onOpenPermissionModal) onOpenPermissionModal();
     } finally {
       setIsLocating(false);
     }
@@ -178,15 +207,65 @@ export const LocationPicker = ({ location, setLocation }) => {
           </button>
           <button
             type="button"
-            onClick={handleAutoDetect}
+            onClick={() => {
+              if (!isLocationPermitted && onOpenPermissionModal) {
+                onOpenPermissionModal();
+              } else {
+                handleAutoDetect();
+              }
+            }}
             disabled={isLocating}
-            className="text-xs font-semibold text-blue-700 hover:text-blue-800 flex items-center gap-1 transition-colors px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200 cursor-pointer shadow-xs"
+            className={`text-xs font-semibold flex items-center gap-1 transition-colors px-2.5 py-1 rounded-md cursor-pointer shadow-xs border ${
+              !isLocationPermitted
+                ? "bg-red-50 text-red-700 border-red-300 hover:bg-red-100"
+                : "bg-blue-50 text-blue-700 hover:text-blue-800 border-blue-200"
+            }`}
           >
-            <Navigation className={`w-3.5 h-3.5 ${isLocating ? "animate-spin" : ""}`} />
-            <span>{isLocating ? "Locating..." : "Auto-Detect GPS"}</span>
+            {isLocating ? (
+              <>
+                <Navigation className="w-3.5 h-3.5 animate-spin" />
+                <span>Locating...</span>
+              </>
+            ) : !isLocationPermitted ? (
+              <>
+                <MapPinOff className="w-3.5 h-3.5 text-red-600" />
+                <span>Couldn't Detect GPS</span>
+              </>
+            ) : (
+              <>
+                <Navigation className="w-3.5 h-3.5" />
+                <span>Auto-Detect GPS</span>
+              </>
+            )}
           </button>
         </div>
       </div>
+
+      {/* Blocked GPS Warning Card */}
+      {!isLocationPermitted && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 text-xs text-red-900 flex items-center justify-between gap-2 shadow-2xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+              <MapPinOff className="w-3.5 h-3.5 text-red-600" />
+            </div>
+            <div className="min-w-0">
+              <span className="font-bold text-red-950 block truncate">
+                Couldn't detect GPS
+              </span>
+              <span className="text-[11px] text-red-700 block truncate">
+                Location access is blocked. Emergency reports require location.
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenPermissionModal}
+            className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] rounded-lg shrink-0 transition-colors shadow-2xs cursor-pointer"
+          >
+            Turn On
+          </button>
+        </div>
+      )}
 
       {/* Embedded OpenStreetMap Pin-Drop View */}
       {showMap && (

@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useCitizenEmergency } from "../../context/CitizenContext";
-import { storageService, getPlayableAudioUrl, verifyReportStatement } from "@jeeva/shared";
+import { storageService, getPlayableAudioUrl, verifyReportStatement, geoService } from "@jeeva/shared";
 import { LocationPicker } from "./LocationPicker";
 import { PhotoCaptureModal } from "./PhotoCaptureModal";
 import { VoiceRecorderModal } from "./VoiceRecorderModal";
+import { LocationPermissionModal } from "./LocationPermissionModal";
 import {
   Waves,
   Users,
@@ -15,6 +16,7 @@ import {
   Save,
   CheckCircle2,
   MapPin,
+  MapPinOff,
   Clock,
   RotateCcw,
   ArrowRight,
@@ -31,7 +33,7 @@ import {
 } from "lucide-react";
 
 export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
-  const { isOnline, submitDistressReport, t } = useCitizenEmergency();
+  const { isOnline, submitDistressReport, t, addToast } = useCitizenEmergency();
 
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("flood");
@@ -53,6 +55,64 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
     landmark: "GPS Pin",
     accuracy: 10
   });
+
+  // Location permission and detection states
+  const [isLocationPermitted, setIsLocationPermitted] = useState(false);
+  const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
+  const [isCheckingLocation, setIsCheckingLocation] = useState(false);
+
+  const checkAndAutoDetectLocation = useCallback(async (showModalOnBlocked = false) => {
+    setIsCheckingLocation(true);
+    try {
+      const permState = await geoService.checkPermissionState();
+      if (permState === "denied") {
+        setIsLocationPermitted(false);
+        if (showModalOnBlocked) {
+          setIsPermissionModalOpen(true);
+        }
+        return;
+      }
+
+      const coords = await geoService.getCurrentCoordinates();
+      if (coords.isBlocked) {
+        setIsLocationPermitted(false);
+        if (showModalOnBlocked) {
+          setIsPermissionModalOpen(true);
+        }
+        return;
+      }
+
+      let address = "";
+      try {
+        address = await geoService.reverseGeocodeOSM(coords.lat, coords.lng);
+      } catch (_) {
+        address = geoService.getReadableAddress(coords.lat, coords.lng);
+      }
+
+      setLocation({
+        lat: coords.lat,
+        lng: coords.lng,
+        address: address || geoService.getReadableAddress(coords.lat, coords.lng),
+        landmark: coords.isSimulated ? "Disaster Grid Checkpoint" : "GPS Triangulated",
+        accuracy: coords.accuracy || 10
+      });
+      setIsLocationPermitted(true);
+      setIsPermissionModalOpen(false);
+    } catch (err) {
+      console.warn("Location check error in EmergencyReportForm:", err);
+      setIsLocationPermitted(false);
+      if (showModalOnBlocked) {
+        setIsPermissionModalOpen(true);
+      }
+    } finally {
+      setIsCheckingLocation(false);
+    }
+  }, []);
+
+  // Check location permission on mount
+  useEffect(() => {
+    checkAndAutoDetectLocation(true);
+  }, [checkAndAutoDetectLocation]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedReceipt, setSubmittedReceipt] = useState(null);
@@ -93,6 +153,20 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Do not allow submission without location access
+    if (!isLocationPermitted) {
+      setIsPermissionModalOpen(true);
+      if (addToast) {
+        addToast({
+          type: "error",
+          title: "Location Access Required",
+          message: "You cannot submit an emergency report without location access. Please allow location permissions."
+        });
+      }
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -698,20 +772,70 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
         <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">
           {t.locationLabel || "Current Location"}
         </label>
-        <LocationPicker location={location} setLocation={setLocation} />
+        <LocationPicker
+          location={location}
+          setLocation={setLocation}
+          isLocationPermitted={isLocationPermitted}
+          setIsLocationPermitted={setIsLocationPermitted}
+          onOpenPermissionModal={() => setIsPermissionModalOpen(true)}
+        />
       </div>
+
+      {/* Location Access Required Notice Banner */}
+      {!isLocationPermitted && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center justify-between gap-2.5 text-xs text-red-900 shadow-2xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <MapPinOff className="w-4 h-4 text-red-600 shrink-0" />
+            <div className="min-w-0">
+              <span className="font-bold block text-red-950 truncate">
+                Location Access Required
+              </span>
+              <span className="text-[11px] text-red-700 block truncate">
+                You cannot submit an emergency report without location access
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsPermissionModalOpen(true)}
+            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-lg shrink-0 transition-colors shadow-2xs cursor-pointer"
+          >
+            Turn On
+          </button>
+        </div>
+      )}
 
       {/* 9. Submit Report Button */}
       <button
         type="submit"
-        disabled={isSubmitting}
-        className={`w-full py-3 px-6 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-sm cursor-pointer ${
-          !isOnline
-            ? "bg-amber-600 hover:bg-amber-700 text-white"
-            : "bg-blue-600 hover:bg-blue-700 text-white"
+        disabled={isSubmitting || !isLocationPermitted}
+        onClick={(e) => {
+          if (!isLocationPermitted) {
+            e.preventDefault();
+            setIsPermissionModalOpen(true);
+            if (addToast) {
+              addToast({
+                type: "error",
+                title: "Location Access Required",
+                message: "You cannot submit an emergency report without location access."
+              });
+            }
+          }
+        }}
+        className={`w-full py-3 px-6 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm ${
+          !isLocationPermitted
+            ? "bg-slate-200 text-slate-400 border-2 border-slate-300 shadow-none cursor-not-allowed"
+            : !isOnline
+            ? "bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
+            : "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
         }`}
       >
-        {!isOnline ? (
+        {!isLocationPermitted ? (
+          <>
+            <MapPinOff className="w-4 h-4 text-slate-400" />
+            <span>Location Access Required to Submit</span>
+          </>
+        ) : !isOnline ? (
           <>
             <Save className="w-4 h-4" />
             <span>{isSubmitting ? (t.submitting || "Saving Report...") : (t.submitReport || "Save Report Offline")}</span>
@@ -723,6 +847,14 @@ export const EmergencyReportForm = ({ onSubmitted, onViewReportStatus }) => {
           </>
         )}
       </button>
+
+      {/* Location Permission Guidance Modal Pop-up */}
+      <LocationPermissionModal
+        isOpen={isPermissionModalOpen}
+        onClose={() => setIsPermissionModalOpen(false)}
+        onRetry={() => checkAndAutoDetectLocation(true)}
+        isRetrying={isCheckingLocation}
+      />
     </form>
   );
 };
