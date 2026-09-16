@@ -1,7 +1,15 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { AlertTriangle, Home, PhoneCall, ShieldAlert, ArrowLeft } from "lucide-react";
 
 export const NotFoundPage = ({ currentPath, onNavigateHome }) => {
+  useEffect(() => {
+    const originalTitle = document.title;
+    document.title = "404 - Page Not Found | JEEVA";
+    return () => {
+      document.title = originalTitle;
+    };
+  }, []);
+
   const handleGoHome = () => {
     if (onNavigateHome) {
       onNavigateHome();
